@@ -1,0 +1,237 @@
+@layer reset {
+  html {
+    box-sizing: border-box;
+    accent-color: var(--accent-signal);
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: inherit;
+  }
+
+  body {
+    margin: 0;
+    min-block-size: 100dvh;
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  p {
+    margin-block: 0;
+  }
+
+  button,
+  input,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+}
+
+@layer base {
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  .mono,
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    clip-path: inset(50%);
+    overflow: hidden;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    white-space: nowrap;
+  }
+
+  :where(a:any-link, button, input, select, summary):focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  @media (forced-colors: active) {
+    :where(a:any-link, button, input, select, summary):focus-visible {
+      outline: 3px solid Highlight;
+    }
+  }
+}
+
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-2);
+    min-block-size: 44px;
+    padding-block: var(--sp-2);
+    padding-inline: var(--sp-4);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    background-color: var(--bg-raised);
+    color: var(--text-primary);
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+      background-color var(--dur-fast) var(--ease-arcade),
+      border-color var(--dur-fast) var(--ease-arcade),
+      transform var(--dur-fast) var(--ease-arcade);
+  }
+
+  .btn:hover:not(:disabled) {
+    border-color: var(--border-strong);
+  }
+
+  .btn:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background-color: var(--btn-primary-bg);
+    color: var(--btn-primary-fg);
+    border-color: transparent;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    opacity: 0.92;
+  }
+
+  .btn-accent {
+    background-color: var(--accent-signal);
+    color: #ffffff;
+    border-color: transparent;
+  }
+
+  .btn-ghost {
+    background-color: transparent;
+    border-color: var(--border-subtle);
+  }
+
+  @media (pointer: coarse) {
+    .btn {
+      min-block-size: 48px;
+    }
+  }
+
+  .panel {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: var(--sp-5);
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-1);
+  }
+
+  .field label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .field input,
+  .field select {
+    min-block-size: 48px;
+    padding-block: var(--sp-2);
+    padding-inline: var(--sp-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
+    background-color: var(--bg-inset);
+    color: var(--text-primary);
+    font-size: max(1rem, 1em);
+  }
+
+  .field input:user-invalid {
+    border-color: var(--status-bad);
+  }
+
+  .field-hint {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+  }
+
+  .field-error {
+    font-size: 0.8125rem;
+    color: var(--status-bad);
+    min-block-size: 1.25em;
+  }
+
+  /* Two-state theme toggle icons react strictly to rendered color-scheme */
+  .theme-toggle .icon-sun,
+  .theme-toggle .label-to-light {
+    display: none;
+  }
+
+  :root:has(> head > meta[name="color-scheme"][content="dark"]) .theme-toggle .icon-moon,
+  :root:has(> head > meta[name="color-scheme"][content="dark"]) .theme-toggle .label-to-dark {
+    display: none;
+  }
+
+  :root:has(> head > meta[name="color-scheme"][content="dark"]) .theme-toggle .icon-sun,
+  :root:has(> head > meta[name="color-scheme"][content="dark"]) .theme-toggle .label-to-light {
+    display: inline;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:has(> head > meta[name="color-scheme"][content="light dark"]) .theme-toggle .icon-moon,
+    :root:has(> head > meta[name="color-scheme"][content="light dark"]) .theme-toggle .label-to-dark {
+      display: none;
+    }
+
+    :root:has(> head > meta[name="color-scheme"][content="light dark"]) .theme-toggle .icon-sun,
+    :root:has(> head > meta[name="color-scheme"][content="light dark"]) .theme-toggle .label-to-light {
+      display: inline;
+    }
+  }
+
+  dialog {
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-xl);
+    padding: var(--sp-6);
+    max-inline-size: min(460px, calc(100dvw - 2rem));
+  }
+
+  dialog::backdrop {
+    background-color: rgba(8, 10, 14, 0.72);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .btn {
+      transition: background-color var(--dur-fast) linear, border-color var(--dur-fast) linear;
+    }
+    .btn:active:not(:disabled) {
+      transform: none;
+    }
+  }
+}

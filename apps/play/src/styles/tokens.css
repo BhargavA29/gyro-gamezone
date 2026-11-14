@@ -1,0 +1,141 @@
+@layer reset, tokens, base, components, utilities;
+
+@layer tokens {
+  :root {
+    color-scheme: light dark;
+
+    /* Typography */
+    --font-display: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-body: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* 4px Spacing Scale */
+    --sp-1: 0.25rem;
+    --sp-2: 0.5rem;
+    --sp-3: 0.75rem;
+    --sp-4: 1rem;
+    --sp-5: 1.25rem;
+    --sp-6: 1.5rem;
+    --sp-8: 2rem;
+    --sp-10: 2.5rem;
+    --sp-12: 3rem;
+
+    /* Nested Radii */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
+
+    /* Motion */
+    --ease-arcade: cubic-bezier(0.22, 1, 0.36, 1);
+    --dur-fast: 140ms;
+    --dur-med: 240ms;
+
+    /* Raw Light & Dark Neutral Ramps */
+    --raw-canvas-light: #f3f5f8;
+    --raw-canvas-dark: #0d0f14;
+    --raw-surface-light: #ffffff;
+    --raw-surface-dark: #151922;
+    --raw-raised-light: #e8ecf2;
+    --raw-raised-dark: #1d2330;
+    --raw-inset-light: #dfe5ee;
+    --raw-inset-dark: #090b0f;
+
+    --raw-border-light: rgba(17, 22, 33, 0.14);
+    --raw-border-dark: rgba(241, 244, 249, 0.12);
+    --raw-border-strong-light: rgba(17, 22, 33, 0.32);
+    --raw-border-strong-dark: rgba(241, 244, 249, 0.28);
+
+    --raw-text-1-light: #111621;
+    --raw-text-1-dark: #f1f4f9;
+    --raw-text-2-light: #434e61;
+    --raw-text-2-dark: #a6b1c3;
+    --raw-text-3-light: #596477;
+    --raw-text-3-dark: #828ea3;
+
+    --raw-accent-light: #d63318;
+    --raw-accent-dark: #ff4d2e;
+
+    --raw-good-light: #127a3e;
+    --raw-good-dark: #3ce87a;
+    --raw-warn-light: #996500;
+    --raw-warn-dark: #ffb800;
+    --raw-bad-light: #c82315;
+    --raw-bad-dark: #ff5d47;
+
+    /* Fallback defaults (light) for browsers without light-dark() */
+    --bg-canvas: var(--raw-canvas-light);
+    --bg-surface: var(--raw-surface-light);
+    --bg-raised: var(--raw-raised-light);
+    --bg-inset: var(--raw-inset-light);
+    --border-subtle: var(--raw-border-light);
+    --border-strong: var(--raw-border-strong-light);
+    --text-primary: var(--raw-text-1-light);
+    --text-secondary: var(--raw-text-2-light);
+    --text-muted: var(--raw-text-3-light);
+    --btn-primary-bg: #111621;
+    --btn-primary-fg: #ffffff;
+    --accent-signal: var(--raw-accent-light);
+    --status-good: var(--raw-good-light);
+    --status-warn: var(--raw-warn-light);
+    --status-bad: var(--raw-bad-light);
+    --focus-ring: var(--raw-accent-light);
+
+    /* Player Slot Tokens */
+    --slot-0: #ff4d2e;
+    --slot-1: #ffb800;
+    --slot-2: #19d3ff;
+    --slot-3: #3ce87a;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-canvas: var(--raw-canvas-dark);
+      --bg-surface: var(--raw-surface-dark);
+      --bg-raised: var(--raw-raised-dark);
+      --bg-inset: var(--raw-inset-dark);
+      --border-subtle: var(--raw-border-dark);
+      --border-strong: var(--raw-border-strong-dark);
+      --text-primary: var(--raw-text-1-dark);
+      --text-secondary: var(--raw-text-2-dark);
+      --text-muted: var(--raw-text-3-dark);
+      --btn-primary-bg: #f1f4f9;
+      --btn-primary-fg: #0d0f14;
+      --accent-signal: var(--raw-accent-dark);
+      --status-good: var(--raw-good-dark);
+      --status-warn: var(--raw-warn-dark);
+      --status-bad: var(--raw-bad-dark);
+      --focus-ring: #19d3ff;
+    }
+  }
+
+  @supports (color: light-dark(white, black)) {
+    :root {
+      --bg-canvas: light-dark(var(--raw-canvas-light), var(--raw-canvas-dark));
+      --bg-surface: light-dark(var(--raw-surface-light), var(--raw-surface-dark));
+      --bg-raised: light-dark(var(--raw-raised-light), var(--raw-raised-dark));
+      --bg-inset: light-dark(var(--raw-inset-light), var(--raw-inset-dark));
+      --border-subtle: light-dark(var(--raw-border-light), var(--raw-border-dark));
+      --border-strong: light-dark(var(--raw-border-strong-light), var(--raw-border-strong-dark));
+      --text-primary: light-dark(var(--raw-text-1-light), var(--raw-text-1-dark));
+      --text-secondary: light-dark(var(--raw-text-2-light), var(--raw-text-2-dark));
+      --text-muted: light-dark(var(--raw-text-3-light), var(--raw-text-3-dark));
+      --btn-primary-bg: light-dark(#111621, #f1f4f9);
+      --btn-primary-fg: light-dark(#ffffff, #0d0f14);
+      --accent-signal: light-dark(var(--raw-accent-light), var(--raw-accent-dark));
+      --status-good: light-dark(var(--raw-good-light), var(--raw-good-dark));
+      --status-warn: light-dark(var(--raw-warn-light), var(--raw-warn-dark));
+      --status-bad: light-dark(var(--raw-bad-light), var(--raw-bad-dark));
+      --focus-ring: light-dark(var(--raw-accent-light), #19d3ff);
+    }
+  }
+
+  /* Reflect <meta name="color-scheme"> override onto CSS color-scheme */
+  :root:has(> head > meta[name="color-scheme"][content="dark"]) {
+    color-scheme: dark;
+  }
+
+  :root:has(> head > meta[name="color-scheme"][content="light"]) {
+    color-scheme: light;
+  }
+}
