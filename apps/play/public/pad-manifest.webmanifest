@@ -1,0 +1,19 @@
+{
+  "name": "Gyro-Gamezone Pad",
+  "short_name": "GyroPad",
+  "description": "Phone motion controller for Gyro-Gamezone party games.",
+  "start_url": "/pad",
+  "scope": "/pad",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d0f14",
+  "theme_color": "#0d0f14",
+  "icons": [
+    {
+      "src": "/icon-pad.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

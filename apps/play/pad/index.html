@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0d0f14" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="/pad-manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/icon-pad.svg" />
+    <title>Gyro-Gamezone Pad</title>
+    <script>
+      try {
+        var s = localStorage.getItem("gyro-color-scheme");
+        if (s === "light" || s === "dark" || s === "light dark") {
+          document.querySelector('meta[name="color-scheme"]').content = s;
+        }
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/pad/main.ts"></script>
+  </body>
+</html>

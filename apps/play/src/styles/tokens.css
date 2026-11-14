@@ -5,8 +5,8 @@
     color-scheme: light dark;
 
     /* Typography */
-    --font-display: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
-    --font-body: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-display: "Space Grotesk Variable", "Space Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-body: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
     /* 4px Spacing Scale */
