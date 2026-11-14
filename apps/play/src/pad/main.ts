@@ -435,6 +435,19 @@ class PadApp {
     ctx.beginPath();
     ctx.arc(px, py, 16 * dpr, 0, Math.PI * 2);
     ctx.stroke();
+
+    if (
+      this.roomState?.phase === "playing" &&
+      this.roomState.selectedGame === "archery" &&
+      this.gestureDetector.isHolding()
+    ) {
+      const pct = this.padHud ? clamp(this.padHud.ammo / Math.max(1, this.padHud.maxAmmo), 0, 1) : 0.35;
+      ctx.strokeStyle = pct >= 0.85 ? "#22c55e" : "#f59e0b";
+      ctx.lineWidth = 3.5 * dpr;
+      ctx.beginPath();
+      ctx.arc(px, py, (28 - pct * 10) * dpr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.08, pct));
+      ctx.stroke();
+    }
   }
 
   private updateLiveHeaderAndStatus(): void {
@@ -467,6 +480,9 @@ class PadApp {
   private updatePadHudDom(): void {
     const ammoBar = this.root.querySelector<HTMLElement>("[data-pad-ammo]");
     const livesBar = this.root.querySelector<HTMLElement>("[data-pad-lives]");
+    const drawWrap = this.root.querySelector<HTMLElement>("[data-pad-draw]");
+    const drawFill = this.root.querySelector<HTMLElement>("[data-pad-draw-fill]");
+    const drawPctEl = this.root.querySelector<HTMLElement>("[data-pad-draw-pct]");
     const reloadBtn = this.root.querySelector<HTMLButtonElement>("[data-pad-reload]");
     const readout = this.root.querySelector<HTMLElement>("[data-gesture-readout]");
 
@@ -480,7 +496,12 @@ class PadApp {
       this.roomState.selectedGame === "fruit-slicer" &&
       this.padHud !== null;
 
-    const showPromptGame = activeTargetGame || activeFruitGame;
+    const activeArcheryGame =
+      this.roomState?.phase === "playing" &&
+      this.roomState.selectedGame === "archery" &&
+      this.padHud !== null;
+
+    const showPromptGame = activeTargetGame || activeFruitGame || activeArcheryGame;
 
     if (ammoBar) {
       ammoBar.hidden = !activeTargetGame;
@@ -494,6 +515,16 @@ class PadApp {
       if (activeFruitGame && this.padHud) {
         livesBar.innerHTML = this.renderLifeHeartsHtml(this.padHud);
         livesBar.setAttribute("aria-label", `Lives ${this.padHud.ammo} of ${this.padHud.maxAmmo}`);
+      }
+    }
+
+    if (drawWrap) {
+      drawWrap.hidden = !activeArcheryGame;
+      if (activeArcheryGame && this.padHud) {
+        const pct = Math.round((this.padHud.ammo / Math.max(1, this.padHud.maxAmmo)) * 100);
+        drawWrap.dataset.full = String(pct >= 85);
+        if (drawFill) drawFill.style.inlineSize = `${pct}%`;
+        if (drawPctEl) drawPctEl.textContent = this.padHud.reloading ? `${pct}%` : "READY";
       }
     }
 
@@ -765,16 +796,21 @@ class PadApp {
           ? "Get Ready — Aim at Center!"
           : state.selectedGame === "fruit-slicer"
             ? "Whip or Flick-Swipe to Slice · Hold Pad to Move"
-            : (game?.controlsSummary.slice(0, 2).join(" · ") ?? "Active Controller");
+            : state.selectedGame === "archery"
+              ? "Hold Pad to Draw · Aim Gyro · Release to Loose"
+              : (game?.controlsSummary.slice(0, 2).join(" · ") ?? "Active Controller");
 
     const showTargetHud =
       state.phase === "playing" && state.selectedGame === "target-shooting" && this.padHud !== null;
     const showFruitHud =
       state.phase === "playing" && state.selectedGame === "fruit-slicer" && this.padHud !== null;
-    const showPromptGame = showTargetHud || showFruitHud;
+    const showArcheryHud =
+      state.phase === "playing" && state.selectedGame === "archery" && this.padHud !== null;
+    const showPromptGame = showTargetHud || showFruitHud || showArcheryHud;
     const hud = this.padHud;
     const hudPipsHtml = hud && showTargetHud ? this.renderAmmoPipsHtml(hud) : "";
     const hudLivesHtml = hud && showFruitHud ? this.renderLifeHeartsHtml(hud) : "";
+    const drawPct = hud && showArcheryHud ? Math.round((hud.ammo / Math.max(1, hud.maxAmmo)) * 100) : 0;
     const isEmpty = hud ? hud.ammo === 0 && !hud.reloading : false;
     const isLow = hud ? hud.ammo > 0 && hud.ammo <= 2 && !hud.reloading : false;
     const reloadLabel = !hud
@@ -806,6 +842,17 @@ class PadApp {
             aria-label="Lives ${hud?.ammo ?? 3} of ${hud?.maxAmmo ?? 3}"
             ${showFruitHud ? "" : "hidden"}
           >${hudLivesHtml}</div>
+          <div
+            class="pad-draw-wrap"
+            data-pad-draw
+            data-full="${drawPct >= 85}"
+            ${showArcheryHud ? "" : "hidden"}
+          >
+            <div class="pad-draw-track"><span class="pad-draw-fill" data-pad-draw-fill style="inline-size: ${drawPct}%;"></span></div>
+            <span class="mono" style="font-size: 0.72rem; font-weight: 700;" data-pad-draw-pct>${
+              hud?.reloading ? `${drawPct}%` : "READY"
+            }</span>
+          </div>
           <span class="field-hint" data-gesture-readout>${escapeHtml(
             showPromptGame && hud?.prompt ? hud.prompt : this.lastGestureText,
           )}</span>

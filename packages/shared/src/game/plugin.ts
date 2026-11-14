@@ -32,6 +32,7 @@ export interface GameHudApi {
   setRoundTimer(remainingMs: number | null): void;
   setTutorialVisible(visible: boolean, lines?: readonly string[]): void;
   announce(text: string): void;
+  setWindHud?(label: string | null): void;
   updateScoreboard(
     players: ReadonlyArray<{
       slot: number;
@@ -76,7 +77,9 @@ export interface GameAudioApi {
       | "bomb_fuse"
       | "bomb_boom"
       | "frenzy"
+      | "bow_draw"
       | "bow_release"
+      | "arrow_thunk"
       | "bat_hit"
       | "end",
   ): void;

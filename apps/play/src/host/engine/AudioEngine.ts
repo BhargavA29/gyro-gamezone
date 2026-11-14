@@ -208,8 +208,22 @@ export class AudioEngine implements GameAudioApi {
         this.tone(ctx, now + 0.11, 783.99, 783.99, 0.08, "triangle", 0.1);
         this.tone(ctx, now + 0.165, 1046.5, 1174.66, 0.16, "sine", 0.12);
         break;
+      case "bow_draw":
+        // Crisp leather/wood string notch creak under rising draw tension
+        this.noiseBurst(ctx, now, 0.045, "bandpass", 1100, 1850, 0.04, 2.2);
+        this.tone(ctx, now, 220, 290, 0.048, "triangle", 0.055);
+        break;
       case "bow_release":
-        this.tone(ctx, now, 420, 160, 0.14, "triangle", 0.11);
+        // Resonant bowstring twang + high feather arrow whistle
+        this.noiseBurst(ctx, now, 0.11, "bandpass", 3200, 1100, 0.085, 1.4);
+        this.tone(ctx, now, 340, 110, 0.18, "triangle", 0.125);
+        this.tone(ctx, now + 0.01, 520, 260, 0.11, "sine", 0.065);
+        break;
+      case "arrow_thunk":
+        // Deep straw-bale arrow thud + wood shaft snap
+        this.noiseBurst(ctx, now, 0.055, "lowpass", 950, 180, 0.12, 1.1);
+        this.tone(ctx, now, 160, 62, 0.095, "triangle", 0.145);
+        this.tone(ctx, now, 420, 190, 0.04, "sine", 0.075);
         break;
       case "bat_hit":
         this.tone(ctx, now, 180, 75, 0.1, "square", 0.16);

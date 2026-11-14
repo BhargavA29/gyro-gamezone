@@ -577,6 +577,23 @@
     color: var(--text-secondary);
   }
 
+  .hud-diff-pill[hidden],
+  .hud-wind-pill[hidden] {
+    display: none;
+  }
+
+  .hud-wind-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.6rem;
+    border-radius: var(--radius-sm);
+    background-color: color-mix(in srgb, var(--accent-electric, #38bdf8) 14%, var(--bg-inset));
+    border: 1px solid color-mix(in srgb, var(--accent-electric, #38bdf8) 45%, var(--border-subtle));
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
   .calib-hud-bottom {
     position: absolute;
     inset-block-end: var(--sp-3);

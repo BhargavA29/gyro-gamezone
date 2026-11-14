@@ -386,4 +386,117 @@ test.describe("Host + Pad Pairing, Calibration, Reconnect, & Aim Lab", () => {
       await context.close();
     }
   });
+
+  test("pairs phone, plays Archery round with hold-to-draw bow & release, and renders results card", async ({
+    browser,
+  }) => {
+    const hostContext = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      viewport: { width: 1280, height: 800 },
+    });
+    const padContext = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+    });
+
+    const hostPage = await hostContext.newPage();
+    const padPage = await padContext.newPage();
+
+    try {
+      await hostPage.goto("/host");
+      await expect(hostPage.locator("[data-status-label]")).toHaveText("Connected");
+      const roomCode = (await hostPage.locator(".pair-code-value").textContent())!.trim();
+
+      await padPage.goto(`/pad?room=${roomCode}`);
+      await padPage.locator("#player-name").fill("RobinHood");
+      await padPage.getByRole("button", { name: /Join & Enable Motion/i }).click();
+      await expect(padPage.locator(".slot-badge")).toContainText("P1 · RobinHood");
+
+      await hostPage.locator("[data-play-archery]").click();
+      await expect(hostPage.locator("[data-countdown-banner]")).toBeVisible();
+      await expect(hostPage.locator("[data-countdown-banner]")).toBeHidden({ timeout: 6_000 });
+
+      await expect(hostPage.locator("[data-hud-title]")).toHaveText("Archery");
+      await expect(hostPage.locator("[data-hud-difficulty]")).toHaveText("Arcade");
+      await expect(hostPage.locator("[data-hud-wind]")).toBeVisible();
+      await expect(hostPage.locator("[data-hud-wind]")).toContainText("Wind");
+      await expect(hostPage.locator("[data-hud-timer]")).toBeVisible();
+
+      // Pad shows Draw Tension meter and hides Target/Fruit HUD widgets
+      await expect(padPage.locator("[data-pad-ammo]")).toBeHidden();
+      await expect(padPage.locator("[data-pad-lives]")).toBeHidden();
+      await expect(padPage.locator("[data-pad-reload]")).toBeHidden();
+      await expect(padPage.locator("[data-pad-draw]")).toBeVisible();
+      await expect(padPage.locator("[data-pad-draw-pct]")).toHaveText("READY");
+      await expect(padPage.locator("[data-gesture-readout]")).toContainText("Hold=Draw");
+
+      // Hold phone touch surface to draw bowstring -> release to loose arrow
+      await hostPage.locator("[data-toggle-debug]").click();
+      const surface = padPage.locator("[data-pad-surface]");
+      const sBox = await surface.boundingBox();
+      if (!sBox) throw new Error("Missing pad surface bounding box");
+      await padPage.mouse.move(sBox.x + sBox.width * 0.5, sBox.y + sBox.height * 0.5);
+      await padPage.mouse.down();
+      await expect(padPage.locator("[data-pad-draw-pct]")).toContainText("%", { timeout: 2_500 });
+      await padPage.waitForTimeout(350);
+      await padPage.mouse.up();
+      await expect(hostPage.locator(".debug-drawer")).toContainText("Last gesture: P1 · hold_end");
+
+      await hostPage.locator("[data-stage-finish]").click();
+      await expect(hostPage.getByRole("heading", { name: /Archery Results/i })).toBeVisible();
+      await expect(hostPage.locator(".results-list")).toContainText("RobinHood");
+      await expect(hostPage.locator("[data-result-card-img]")).toHaveAttribute(
+        "src",
+        /^data:image\/png;base64,/,
+      );
+    } finally {
+      await padContext.close();
+      await hostContext.close();
+    }
+  });
+
+  test("plays Archery in Simulator mode with Chill preset, draw-and-release, and Space loose", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      viewport: { width: 1280, height: 800 },
+    });
+    const page = await context.newPage();
+
+    try {
+      await page.goto("/host");
+      await expect(page.locator("[data-status-label]")).toHaveText("Connected");
+      await page.locator("[data-toggle-sim]").click();
+      await page.locator('[data-set-difficulty="casual"]').click();
+
+      await page.locator("[data-play-archery]").click();
+      await expect(page.locator("[data-countdown-banner]")).toBeHidden({ timeout: 6_000 });
+      await expect(page.locator("[data-hud-difficulty]")).toHaveText("Chill");
+      await expect(page.locator("[data-hud-wind]")).toBeVisible();
+
+      const canvas = page.locator("canvas.host-stage-canvas");
+      const box = await canvas.boundingBox();
+      if (!box) throw new Error("Missing stage canvas bounding box");
+
+      // Aim towards center range target, hold left mouse to draw bow, then release
+      await page.locator("[data-toggle-debug]").click();
+      await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.48);
+      await page.mouse.down();
+      await page.waitForTimeout(450);
+      await page.mouse.up();
+      await expect(page.locator(".debug-drawer")).toContainText("Last gesture: P1 · hold_end");
+
+      // Space bar quick-shot also looses an arrow cleanly
+      await page.keyboard.press("Space");
+      await expect(page.locator(".debug-drawer")).toContainText("Last gesture: P1 · swing");
+
+      await page.locator("[data-stage-finish]").click();
+      await expect(page.getByRole("heading", { name: /Archery Results/i })).toBeVisible();
+      await expect(page.locator("[data-download-card]")).toBeVisible();
+    } finally {
+      await context.close();
+    }
+  });
 });

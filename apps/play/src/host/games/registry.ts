@@ -1,6 +1,6 @@
 import type { GameId, GamePlugin } from "@gyro/shared";
 
-const IMPLEMENTED_GAMES = new Set<GameId>(["aim-demo", "target-shooting", "fruit-slicer"]);
+const IMPLEMENTED_GAMES = new Set<GameId>(["aim-demo", "target-shooting", "fruit-slicer", "archery"]);
 
 export function isGameImplemented(gameId: GameId): boolean {
   return IMPLEMENTED_GAMES.has(gameId);
@@ -19,6 +19,10 @@ export async function loadGamePlugin(gameId: GameId): Promise<GamePlugin> {
     case "fruit-slicer": {
       const mod = await import("./fruit-slicer/FruitSlicerGame.js");
       return new mod.FruitSlicerGame();
+    }
+    case "archery": {
+      const mod = await import("./archery/ArcheryGame.js");
+      return new mod.ArcheryGame();
     }
     case "aim-demo":
     default: {

@@ -695,6 +695,9 @@ class HostApp {
             <button type="button" class="btn btn-accent" data-play-fruits ${
               playerCount === 0 ? "disabled" : ""
             }>Play Fruit Slicer</button>
+            <button type="button" class="btn btn-accent" data-play-archery ${
+              playerCount === 0 ? "disabled" : ""
+            }>Play Archery</button>
             <button type="button" class="btn btn-primary" data-launch-calib ${
               playerCount === 0 ? "disabled" : ""
             }>Calibrate</button>
@@ -738,6 +741,12 @@ class HostApp {
     container.querySelector("[data-play-fruits]")?.addEventListener("click", () => {
       this.audio.unlock();
       this.hostClient.sendControl({ type: "host:select_game", gameId: "fruit-slicer" });
+      this.hostClient.sendControl({ type: "host:start_round", seed: Date.now() & 0xffffff });
+    });
+
+    container.querySelector("[data-play-archery]")?.addEventListener("click", () => {
+      this.audio.unlock();
+      this.hostClient.sendControl({ type: "host:select_game", gameId: "archery" });
       this.hostClient.sendControl({ type: "host:start_round", seed: Date.now() & 0xffffff });
     });
 
@@ -796,7 +805,7 @@ class HostApp {
       <div class="seats-header">
         <div>
           <h1>Select Activity</h1>
-          <p class="field-hint">Aim Lab, Target Shooting &amp; Fruit Slicer are playable now; Archery &amp; Cricket unlock next.</p>
+          <p class="field-hint">Aim Lab, Target Shooting, Fruit Slicer &amp; Archery are playable now; Cricket unlocks next.</p>
         </div>
         <button type="button" class="btn btn-ghost" data-back-lobby>Back to Lobby</button>
       </div>
@@ -841,6 +850,7 @@ class HostApp {
 
           <div class="stage-hud-card" style="display: flex; flex-direction: column; gap: 0.5rem;">
             <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.65rem; flex-wrap: wrap;">
+              <span class="hud-wind-pill mono" data-hud-wind hidden>Wind → 0.0</span>
               <span class="hud-diff-pill" data-hud-difficulty hidden>Arcade</span>
               <span class="round-timer mono" data-hud-timer hidden>60.0s</span>
               <div class="scoreboard-strip" data-hud-scoreboard></div>
@@ -894,7 +904,8 @@ class HostApp {
       const showDiff =
         this.roomState.phase !== "calibration" &&
         (this.roomState.selectedGame === "target-shooting" ||
-          this.roomState.selectedGame === "fruit-slicer");
+          this.roomState.selectedGame === "fruit-slicer" ||
+          this.roomState.selectedGame === "archery");
       diffEl.hidden = !showDiff;
       diffEl.textContent =
         this.roomState.difficulty === "casual"
@@ -1053,6 +1064,16 @@ class HostApp {
             const target = this.root.querySelector("[data-hud-announce]");
             if (target) target.textContent = "";
           }, 1800);
+        },
+        setWindHud: (label) => {
+          const windEl = this.root.querySelector<HTMLElement>("[data-hud-wind]");
+          if (!windEl) return;
+          if (!label) {
+            windEl.hidden = true;
+            return;
+          }
+          windEl.hidden = false;
+          windEl.textContent = label;
         },
         updateScoreboard: (players) => {
           this.latestScoreboard = [...players];
