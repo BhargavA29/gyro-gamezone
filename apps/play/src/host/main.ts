@@ -19,7 +19,11 @@ import {
   type RoomPhase,
 } from "@gyro/shared";
 import { avatarSvg, ICON_VOLUME_OFF, ICON_VOLUME_ON } from "../common/avatars.js";
-import { resolveJoinOrigin } from "../common/colyseus-client.js";
+import {
+  getColyseusEndpoint,
+  getServerOverride,
+  resolveJoinOrigin,
+} from "../common/colyseus-client.js";
 import { bindThemeToggle, themeToggleHtml } from "../common/theme.js";
 import { AudioEngine } from "./engine/AudioEngine.js";
 import { HostEngine, type EngineTelemetry } from "./engine/HostEngine.js";
@@ -484,7 +488,9 @@ class HostApp {
   private getJoinUrl(): string {
     const base = resolveJoinOrigin(this.customOrigin);
     const code = this.roomState?.roomCode ?? "";
-    return `${base}/pad?room=${encodeURIComponent(code)}`;
+    const override = getServerOverride();
+    const serverParam = override ? `&server=${encodeURIComponent(override)}` : "";
+    return `${base}/pad?room=${encodeURIComponent(code)}${serverParam}`;
   }
 
   private async ensureQrGenerated(): Promise<void> {
@@ -522,11 +528,17 @@ class HostApp {
     }
 
     if (this.currentScreen === "error") {
+      const endpoint = getColyseusEndpoint();
       container.innerHTML = `
-        <section class="panel">
+        <section class="panel" style="display: grid; gap: 0.75rem;">
           <h1>Server connection failed</h1>
-          <p class="field-hint">${escapeHtml(this.fatalError ?? "Unable to reach Colyseus server.")}</p>
-          <div style="margin-top: 1rem;">
+          <p class="field-hint">${escapeHtml(this.fatalError ?? "Unable to reach Colyseus relay server.")}</p>
+          <p class="field-hint">
+            Target relay: <code class="mono">${escapeHtml(endpoint)}</code>.
+            If hosted on a free backend (Render/Koyeb), the first request after sleep takes ~30–50s to wake up — click Retry.
+            If frontend &amp; backend are split (e.g., Vercel + Render), set <code>VITE_SERVER_URL</code> at build time or append <code>?server=https://your-server</code>.
+          </p>
+          <div style="margin-top: 0.25rem;">
             <button type="button" class="btn btn-primary" data-retry-connect>Retry connection</button>
           </div>
         </section>

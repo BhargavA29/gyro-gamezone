@@ -1,9 +1,27 @@
 const STORAGE_KEY = "gyro-color-scheme";
+const THEME_BG: Record<"dark" | "light", string> = {
+  dark: "#0d0f14",
+  light: "#f3f5f8",
+};
 
 export type ColorSchemePreference = "dark" | "light" | "light dark";
 
 function getMeta(): HTMLMetaElement | null {
   return document.querySelector('meta[name="color-scheme"]');
+}
+
+function syncThemeColorMeta(scheme: ColorSchemePreference): void {
+  const tc = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (!tc) return;
+  const resolved =
+    scheme === "light"
+      ? "light"
+      : scheme === "dark"
+        ? "dark"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light";
+  tc.content = THEME_BG[resolved];
 }
 
 export function getRenderedScheme(): "dark" | "light" {
@@ -19,6 +37,7 @@ export function applyColorScheme(scheme: ColorSchemePreference): void {
   if (meta) {
     meta.content = scheme;
   }
+  syncThemeColorMeta(scheme);
   try {
     if (scheme === "light dark") {
       localStorage.removeItem(STORAGE_KEY);
@@ -43,11 +62,13 @@ export function bindThemeToggle(button: HTMLButtonElement): () => void {
   };
   const onStorage = (e: StorageEvent) => {
     if (e.key === STORAGE_KEY) {
+      const next: ColorSchemePreference =
+        e.newValue === "light" || e.newValue === "dark" ? e.newValue : "dark";
       const meta = getMeta();
       if (meta) {
-        meta.content =
-          e.newValue === "light" || e.newValue === "dark" ? e.newValue : "dark";
+        meta.content = next;
       }
+      syncThemeColorMeta(next);
     }
   };
   button.addEventListener("click", onClick);

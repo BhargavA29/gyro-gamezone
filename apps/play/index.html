@@ -3,24 +3,87 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="robots" content="noindex, nofollow" />
+    <meta name="description" content="Gyro-Gamezone turns your desktop browser into a shared 3D party arcade and your phones into motion controllers. Play Target Shooting, Fruit Slicer, and Championship Archery with zero app installs." />
     <meta name="color-scheme" content="dark" />
-    <link rel="icon" type="image/svg+xml" href="/icon-pad.svg" />
-    <title>Gyro-Gamezone Play</title>
+    <meta name="theme-color" content="#0d0f14" />
+    <meta name="apple-mobile-web-app-title" content="Gyro-Gamezone" />
+    <meta name="application-name" content="Gyro-Gamezone" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Gyro-Gamezone — Your Phone Is the Controller" />
+    <meta property="og:description" content="Shared-screen 3D browser party arcade for 1–4 players. Scan a QR code to aim, slice, and draw with your phone gyroscope." />
+    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Gyro-Gamezone — Browser Motion Party Arcade" />
+    <meta name="twitter:description" content="Desktop runs the big 3D screen. Phones pair via QR as 60Hz gyroscope controllers." />
+    <meta name="twitter:image" content="/og-image.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <title>Gyro-Gamezone — Phone-as-Controller 3D Party Arcade</title>
+    <script>
+      try {
+        var s = localStorage.getItem("gyro-color-scheme");
+        if (s === "light" || s === "dark" || s === "light dark") {
+          document.querySelector('meta[name="color-scheme"]').content = s;
+          var tc = document.querySelector('meta[name="theme-color"]');
+          if (tc && (s === "light" || s === "dark")) {
+            tc.content = s === "light" ? "#f3f5f8" : "#0d0f14";
+          }
+        }
+      } catch (e) {}
+    </script>
     <link rel="stylesheet" href="/src/styles/tokens.css" />
     <link rel="stylesheet" href="/src/styles/base.css" />
   </head>
   <body>
-    <main style="max-inline-size: 620px; margin: 4rem auto; padding: 1.5rem; display: grid; gap: 1rem;">
-      <section class="panel" style="display: grid; gap: 1rem;">
-        <h1>Gyro-Gamezone Play</h1>
-        <p style="color: var(--text-secondary);">Choose your screen role on this device.</p>
+    <header style="max-inline-size: 920px; margin: 2rem auto 0; padding: 0 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+      <a href="/" style="display: inline-flex; align-items: center; gap: 0.65rem; font-family: var(--font-display); font-weight: 800; font-size: 1.05rem; letter-spacing: 0.02em; color: var(--text-primary); text-decoration: none;">
+        <img src="/favicon.svg" alt="" width="28" height="28" />
+        <span>GYRO-GAMEZONE</span>
+      </a>
+      <nav aria-label="Primary actions" style="display: flex; gap: 0.65rem; flex-wrap: wrap;">
+        <a class="btn btn-primary" href="/host">Open Host</a>
+        <a class="btn btn-accent" href="/pad">Open Controller</a>
+      </nav>
+    </header>
+
+    <main style="max-inline-size: 920px; margin: 2rem auto 3rem; padding: 0 1.25rem; display: grid; gap: 1.5rem;">
+      <section class="panel" style="display: grid; gap: 1rem; padding: 1.75rem;">
+        <span class="badge badge-good" style="width: fit-content;">1–4 Players · Zero App Install</span>
+        <h1 style="font-size: clamp(1.9rem, 4vw, 2.75rem); line-height: 1.05;">Turn your laptop into the arena and your phones into motion controllers.</h1>
+        <p style="color: var(--text-secondary); max-inline-size: 62ch; font-size: 1.02rem;">
+          Open <strong>Host</strong> on a TV or laptop to spawn a room and QR code. Scan on iOS Safari or Android Chrome to pair your phone gyroscope at 60&nbsp;Hz — or click Simulator to play solo with your mouse.
+        </p>
         <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
-          <a class="btn btn-primary" href="/host">Open Desktop Host (/host)</a>
-          <a class="btn btn-accent" href="/pad">Open Phone Controller (/pad)</a>
+          <a class="btn btn-primary" href="/host">Launch Desktop Host (/host)</a>
+          <a class="btn btn-accent" href="/pad">Join on Phone (/pad)</a>
           <a class="btn btn-ghost" href="/pad/debug">Open Sensor Lab (/pad/debug)</a>
         </div>
       </section>
+
+      <section aria-label="Playable arcade modes" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem;">
+        <article class="panel" style="display: grid; gap: 0.5rem;">
+          <h2 style="font-size: 1.15rem;">Target Shooting</h2>
+          <p style="color: var(--text-secondary); font-size: 0.94rem;">60-second gallery with Chill/Arcade/Turbo speeds, mag management, flick-to-reload cueing, and combo chains.</p>
+        </article>
+        <article class="panel" style="display: grid; gap: 0.5rem;">
+          <h2 style="font-size: 1.15rem;">Fruit Slicer</h2>
+          <p style="color: var(--text-secondary); font-size: 0.94rem;">Continuous touch-swipe or gyro blade arcs, juicy splash decals, randomized volleys, and 3-life bomb stakes.</p>
+        </article>
+        <article class="panel" style="display: grid; gap: 0.5rem;">
+          <h2 style="font-size: 1.15rem;">Championship Archery</h2>
+          <p style="color: var(--text-secondary); font-size: 0.94rem;">Six escalating Ends on a 3D straw target with hold-to-draw haptic tension, crosswind banners, and camera grouping zoom.</p>
+        </article>
+      </section>
     </main>
+
+    <footer style="max-inline-size: 920px; margin: 0 auto 2.5rem; padding: 0 1.25rem; color: var(--text-muted); font-size: 0.85rem;">
+      <p>Gyro-Gamezone · Requires HTTPS for mobile gyroscope permissions · No app store download needed.</p>
+    </footer>
   </body>
 </html>

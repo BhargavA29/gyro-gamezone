@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: gyro-gamezone-server
+    runtime: node
+    plan: free
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @gyro/shared build && pnpm --filter @gyro/server build
+    startCommand: pnpm --filter @gyro/server start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: ALLOWED_ORIGINS
+        value: "*"

@@ -9,12 +9,71 @@ import type {
 
 declare const __DEV_LAN_ORIGIN__: string;
 
-export function getColyseusEndpoint(): string {
-  const envUrl = import.meta.env.VITE_SERVER_URL as string | undefined;
-  if (envUrl && envUrl.trim().length > 0) {
-    return envUrl.trim();
+const SERVER_OVERRIDE_KEY = "gyro-server-url";
+
+function sanitizeServerUrl(raw: string): string | null {
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (
+      parsed.protocol === "http:" ||
+      parsed.protocol === "https:" ||
+      parsed.protocol === "ws:" ||
+      parsed.protocol === "wss:"
+    ) {
+      return parsed.toString().replace(/\/+$/, "");
+    }
+  } catch {
+    // Ignore malformed URLs
   }
-  return `${window.location.origin}/colyseus`;
+  return null;
+}
+
+/**
+ * Returns an active ?server=... override (or cached session override) if present.
+ * Allows pointing a Vercel frontend at any Render/Koyeb/Cloudflare Tunnel backend without rebuilding.
+ */
+export function getServerOverride(): string | null {
+  if (typeof window === "undefined") return null;
+  const fromQuery = new URLSearchParams(window.location.search).get("server");
+  if (fromQuery !== null) {
+    const valid = sanitizeServerUrl(fromQuery);
+    try {
+      if (valid) {
+        sessionStorage.setItem(SERVER_OVERRIDE_KEY, valid);
+      } else {
+        sessionStorage.removeItem(SERVER_OVERRIDE_KEY);
+      }
+    } catch {
+      // ignore storage errors
+    }
+    if (valid) return valid;
+  }
+  try {
+    const stored = sessionStorage.getItem(SERVER_OVERRIDE_KEY);
+    return stored ? sanitizeServerUrl(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getColyseusEndpoint(): string {
+  const override = getServerOverride();
+  if (override) {
+    return override;
+  }
+  const envUrl = import.meta.env.VITE_SERVER_URL as string | undefined;
+  if (envUrl) {
+    const valid = sanitizeServerUrl(envUrl);
+    if (valid) return valid;
+  }
+  // Vite dev server proxies /colyseus -> local Node Colyseus server (see vite.config.ts).
+  if (import.meta.env.DEV) {
+    return `${window.location.origin}/colyseus`;
+  }
+  // Single-host production mode (SERVE_PLAY_DIST=1) serves static assets and Colyseus on one origin.
+  return window.location.origin;
 }
 
 export function createColyseusClient(): Client {
@@ -67,7 +126,7 @@ export function snapshotRoomState(room: Room): PartyRoomStateSnapshot {
   if (raw?.players && typeof raw.players.forEach === "function") {
     raw.players.forEach((p: Record<string, unknown>) => {
       players.push({
-        slot: (Number(p.slot ?? 0)) as 0 | 1 | 2 | 3,
+        slot: Number(p.slot ?? 0) as 0 | 1 | 2 | 3,
         playerId: String(p.playerId ?? ""),
         name: String(p.name ?? "Player"),
         colorHex: String(p.colorHex ?? "#FF4D2E"),
