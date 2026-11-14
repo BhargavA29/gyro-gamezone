@@ -4,6 +4,7 @@ import {
   DEFAULT_SENSITIVITY,
   type AvatarId,
   type CalibrationStep,
+  type DifficultyPreset,
   type GameId,
   type RoomPhase,
 } from "@gyro/shared";
@@ -36,6 +37,7 @@ export const PartyState = schema(
     roomCode: t.string().default(""),
     phase: t.string<RoomPhase>().default("lobby"),
     selectedGame: t.string<GameId>().default("aim-demo"),
+    difficulty: t.string<DifficultyPreset>().default("arcade"),
     phaseStartedAt: t.float64().default(0),
     roundDurationMs: t.uint32().default(0),
     hostConnected: t.boolean().default(false),

@@ -5,10 +5,12 @@ import "@fontsource/jetbrains-mono/700.css";
 import "./host.css";
 import QRCode from "qrcode";
 import {
+  DIFFICULTY_PRESETS,
   GAME_CATALOG,
   MAX_PLAYERS,
   PLAYER_SLOT_PALETTE,
   RECONNECT_GRACE_MS,
+  type DifficultyPreset,
   type GameHostContext,
   type GameId,
   type GamePlugin,
@@ -88,6 +90,16 @@ class HostApp {
     effectiveDpr: 1,
   };
   private lastGestureText = "None yet";
+  private playerAmmoState = new Map<
+    number,
+    { ammo: number; maxAmmo: number; reloading: boolean; streak: number }
+  >();
+  private latestScoreboard: Array<{
+    slot: number;
+    name: string;
+    colorHex: string;
+    score: number;
+  }> = [];
 
   private announceText = "";
   private announceTimer: number | null = null;
@@ -541,6 +553,51 @@ class HostApp {
     }
   }
 
+  private renderDifficultyBarHtml(active: DifficultyPreset): string {
+    const activeMeta = DIFFICULTY_PRESETS.find((d) => d.id === active) ?? DIFFICULTY_PRESETS[1]!;
+    const buttons = DIFFICULTY_PRESETS.map(
+      (d) => `
+        <button
+          type="button"
+          class="diff-btn"
+          data-set-difficulty="${d.id}"
+          aria-pressed="${d.id === active}"
+        >${escapeHtml(d.label)}</button>
+      `,
+    ).join("");
+
+    return `
+      <div class="difficulty-bar" data-difficulty-bar>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <strong>Target Speed / Difficulty</strong>
+          <span class="diff-hint" data-diff-hint>${escapeHtml(activeMeta.shortDesc)}</span>
+        </div>
+        <div class="difficulty-group" role="group" aria-label="Difficulty preset">
+          ${buttons}
+        </div>
+      </div>
+    `;
+  }
+
+  private bindDifficultyButtons(container: HTMLElement): void {
+    container.querySelectorAll<HTMLButtonElement>("[data-set-difficulty]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const diff = btn.dataset.setDifficulty as DifficultyPreset;
+        if (diff !== "casual" && diff !== "arcade" && diff !== "pro") return;
+        this.hostClient.sendControl({ type: "host:set_difficulty", difficulty: diff });
+        if (this.roomState) {
+          this.roomState = { ...this.roomState, difficulty: diff };
+        }
+        container.querySelectorAll<HTMLButtonElement>("[data-set-difficulty]").forEach((b) => {
+          b.setAttribute("aria-pressed", String(b.dataset.setDifficulty === diff));
+        });
+        const meta = DIFFICULTY_PRESETS.find((d) => d.id === diff);
+        const hintEl = container.querySelector("[data-diff-hint]");
+        if (hintEl && meta) hintEl.textContent = meta.shortDesc;
+      });
+    });
+  }
+
   private renderLobby(container: HTMLElement, state: PartyRoomStateSnapshot): void {
     const joinUrl = this.getJoinUrl();
     const playerCardsHtml = Array.from({ length: MAX_PLAYERS }, (_, slot) => {
@@ -627,6 +684,8 @@ class HostApp {
 
           <div class="seats-grid">${playerCardsHtml}</div>
 
+          ${this.renderDifficultyBarHtml(state.difficulty)}
+
           <div class="lobby-cta-bar">
             <button type="button" class="btn btn-accent" data-play-targets ${
               playerCount === 0 ? "disabled" : ""
@@ -642,6 +701,8 @@ class HostApp {
         </section>
       </div>
     `;
+
+    this.bindDifficultyButtons(container);
 
     container.querySelector("[data-copy-url]")?.addEventListener("click", () => {
       void navigator.clipboard?.writeText(joinUrl).then(() => {
@@ -728,8 +789,11 @@ class HostApp {
         </div>
         <button type="button" class="btn btn-ghost" data-back-lobby>Back to Lobby</button>
       </div>
+      ${this.renderDifficultyBarHtml(state.difficulty)}
       <div class="catalog-grid">${cardsHtml}</div>
     `;
+
+    this.bindDifficultyButtons(container);
 
     container.querySelector("[data-back-lobby]")?.addEventListener("click", () => {
       this.hostClient.sendControl({ type: "host:set_phase", phase: "lobby" });
@@ -766,6 +830,7 @@ class HostApp {
 
           <div class="stage-hud-card" style="display: flex; flex-direction: column; gap: 0.5rem;">
             <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.65rem; flex-wrap: wrap;">
+              <span class="hud-diff-pill" data-hud-difficulty hidden>Arcade</span>
               <span class="round-timer mono" data-hud-timer hidden>60.0s</span>
               <div class="scoreboard-strip" data-hud-scoreboard></div>
             </div>
@@ -811,6 +876,19 @@ class HostApp {
         this.roomState.phase === "calibration"
           ? "Sensor Calibration + Live Mirror"
           : (gameEntry?.title ?? "Aim Lab");
+    }
+
+    const diffEl = this.root.querySelector<HTMLElement>("[data-hud-difficulty]");
+    if (diffEl) {
+      const showDiff =
+        this.roomState.phase !== "calibration" && this.roomState.selectedGame === "target-shooting";
+      diffEl.hidden = !showDiff;
+      diffEl.textContent =
+        this.roomState.difficulty === "casual"
+          ? "Chill"
+          : this.roomState.difficulty === "pro"
+            ? "Turbo 1.25×"
+            : "Arcade";
     }
 
     const actionsEl = this.root.querySelector("[data-stage-actions]");
@@ -927,6 +1005,7 @@ class HostApp {
         return getPlayers();
       },
       seed: Date.now() & 0xffffff,
+      difficulty: this.roomState.difficulty,
       getPhase,
       hud: {
         setRoundTimer: (remainingMs) => {
@@ -963,19 +1042,19 @@ class HostApp {
           }, 1800);
         },
         updateScoreboard: (players) => {
-          const sb = this.root.querySelector("[data-hud-scoreboard]");
-          if (!sb) return;
-          sb.innerHTML = players
-            .map(
-              (p) => `
-                <span class="score-pill">
-                  <span class="score-swatch" style="background-color: ${escapeHtml(p.colorHex)};"></span>
-                  <span>${escapeHtml(p.name)}</span>
-                  <strong class="mono">${p.score}</strong>
-                </span>
-              `,
-            )
-            .join("");
+          this.latestScoreboard = [...players];
+          this.renderScoreboardStrip();
+        },
+        setPlayerAmmoHud: (players) => {
+          for (const row of players) {
+            this.playerAmmoState.set(row.slot, {
+              ammo: row.ammo,
+              maxAmmo: row.maxAmmo,
+              reloading: row.reloading,
+              streak: row.streak,
+            });
+          }
+          this.renderScoreboardStrip();
         },
       },
       audio: this.audio,
@@ -985,6 +1064,9 @@ class HostApp {
       },
       sendHaptic: (slot, pattern: HapticPattern) => {
         this.hostClient.sendControl({ type: "host:haptic", slot, pattern });
+      },
+      sendPadHud: (slot, payload) => {
+        this.hostClient.sendControl({ type: "host:pad_hud", slot, ...payload });
       },
       finishRound: (scores) => {
         this.hostClient.sendControl({ type: "host:round_result", scores });
@@ -1004,7 +1086,39 @@ class HostApp {
     }
   }
 
+  private renderScoreboardStrip(): void {
+    const sb = this.root.querySelector("[data-hud-scoreboard]");
+    if (!sb) return;
+    sb.innerHTML = this.latestScoreboard
+      .map((p) => {
+        const ammoInfo = this.playerAmmoState.get(p.slot);
+        let ammoHtml = "";
+        if (ammoInfo) {
+          const isLow = ammoInfo.ammo > 0 && ammoInfo.ammo <= 2 && !ammoInfo.reloading;
+          const dots = Array.from({ length: ammoInfo.maxAmmo }, (_, idx) => {
+            const filled = ammoInfo.reloading || idx < ammoInfo.ammo;
+            return `<span class="ammo-dot" data-filled="${filled}" data-low="${isLow && filled}"></span>`;
+          }).join("");
+          const streakHtml =
+            ammoInfo.streak >= 2 ? `<span class="streak-tag">×${ammoInfo.streak}</span>` : "";
+          ammoHtml = `<span class="score-ammo-strip" role="img" aria-label="Ammo ${ammoInfo.ammo} of ${ammoInfo.maxAmmo}">${dots}</span>${streakHtml}`;
+        }
+        return `
+          <span class="score-pill" style="--seat-color: ${escapeHtml(p.colorHex)};">
+            <span class="score-swatch" style="background-color: ${escapeHtml(p.colorHex)};"></span>
+            <span>${escapeHtml(p.name)}</span>
+            <strong class="mono">${p.score}</strong>
+            ${ammoHtml}
+          </span>
+        `;
+      })
+      .join("");
+  }
+
   private teardownStage(): void {
+    this.audio.stopMusic();
+    this.playerAmmoState.clear();
+    this.latestScoreboard = [];
     this.engine.setPlugin(null);
     this.stageResizeObserver?.disconnect();
     this.stageResizeObserver = null;

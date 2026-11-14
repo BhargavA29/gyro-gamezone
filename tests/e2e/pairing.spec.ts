@@ -152,10 +152,19 @@ test.describe("Host + Pad Pairing, Calibration, Reconnect, & Aim Lab", () => {
       await expect(page.locator("[data-status-label]")).toHaveText("Connected");
 
       await page.locator("[data-toggle-sim]").click();
+
+      // Switch difficulty preset in lobby before launch and verify active state
+      const proBtn = page.locator('[data-set-difficulty="pro"]');
+      await proBtn.click();
+      await expect(proBtn).toHaveAttribute("aria-pressed", "true");
+      const casualBtn = page.locator('[data-set-difficulty="casual"]');
+      await casualBtn.click();
+      await expect(casualBtn).toHaveAttribute("aria-pressed", "true");
+
       await expect(page.locator("[data-play-targets]")).toBeEnabled();
       await page.locator("[data-play-targets]").click();
 
-      // Countdown banner shows first, then transitions to playing with round timer
+      // Countdown banner shows first, then transitions to playing with round timer + difficulty pill
       const countdown = page.locator("[data-countdown-banner]");
       await expect(countdown).toBeVisible();
       await expect(countdown).toBeHidden({ timeout: 6_000 });
@@ -163,16 +172,25 @@ test.describe("Host + Pad Pairing, Calibration, Reconnect, & Aim Lab", () => {
       const timer = page.locator("[data-hud-timer]");
       await expect(timer).toBeVisible();
       await expect(timer).toContainText("s");
+      await expect(page.locator("[data-hud-difficulty]")).toHaveText("Chill");
 
       const canvas = page.locator("canvas.host-stage-canvas");
       await expect(canvas).toBeVisible();
       const box = await canvas.boundingBox();
       if (!box) throw new Error("Missing stage canvas bounding box");
 
-      // Fire simulator shots and test wrist-flick reload shortcut (R)
-      await page.mouse.move(box.x + box.width * 0.42, box.y + box.height * 0.44);
-      await page.mouse.click(box.x + box.width * 0.42, box.y + box.height * 0.44);
+      // Fire 7 simulator shots to empty 6-shot mag + trigger dry fire reload prompt, then press R to reload
+      const cx = box.x + box.width * 0.42;
+      const cy = box.y + box.height * 0.44;
+      await page.mouse.move(cx, cy);
+      for (let i = 0; i < 7; i++) {
+        await page.mouse.click(cx, cy);
+      }
+      await expect(page.locator("[data-hud-announce]")).toContainText("Empty!");
+      await expect(page.locator('.ammo-dot[data-filled="true"]')).toHaveCount(0);
+
       await page.keyboard.press("r");
+      await expect(page.locator('.ammo-dot[data-filled="true"]')).toHaveCount(6);
 
       // Finish round early into Results Leaderboard + Shareable PNG Card
       await page.locator("[data-stage-finish]").click();
@@ -187,6 +205,71 @@ test.describe("Host + Pad Pairing, Calibration, Reconnect, & Aim Lab", () => {
       await expect(page.locator("[data-download-card]")).toBeVisible();
     } finally {
       await context.close();
+    }
+  });
+
+  test("syncs Target Shooting difficulty, 6-pip magazine HUD, empty warning, and one-tap reload between /host and /pad", async ({
+    browser,
+  }) => {
+    const hostContext = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      viewport: { width: 1280, height: 800 },
+    });
+    const padContext = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+    });
+
+    const hostPage = await hostContext.newPage();
+    const padPage = await padContext.newPage();
+
+    try {
+      await hostPage.goto("/host");
+      await expect(hostPage.locator("[data-status-label]")).toHaveText("Connected");
+      const roomCode = (await hostPage.locator(".pair-code-value").textContent())!.trim();
+
+      await hostPage.locator('[data-set-difficulty="pro"]').click();
+      await expect(hostPage.locator('[data-set-difficulty="pro"]')).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+
+      await padPage.goto(`/pad?room=${roomCode}`);
+      await padPage.locator("#player-name").fill("PadShooter");
+      await padPage.getByRole("button", { name: /Join & Enable Motion/i }).click();
+      await expect(padPage.locator(".slot-badge")).toContainText("P1 · PadShooter");
+
+      await hostPage.locator("[data-play-targets]").click();
+      await expect(hostPage.locator("[data-countdown-banner]")).toBeHidden({ timeout: 6_000 });
+      await expect(hostPage.locator("[data-hud-difficulty]")).toHaveText("Turbo 1.25×");
+
+      const reloadBtn = padPage.locator("[data-pad-reload]");
+      await expect(reloadBtn).toBeVisible();
+      await expect(reloadBtn).toContainText("Ready 6/6");
+      await expect(padPage.locator('.pad-mag-pip[data-filled="true"]')).toHaveCount(6);
+
+      // Tap pad surface 6 times quickly to empty magazine cleanly without hitting reload button
+      const surface = padPage.locator("[data-pad-surface]");
+      const sBox = await surface.boundingBox();
+      if (!sBox) throw new Error("Missing pad surface box");
+      for (let i = 0; i < 6; i++) {
+        await padPage.mouse.click(sBox.x + sBox.width * 0.5, sBox.y + 36);
+      }
+
+      await expect(reloadBtn).toHaveAttribute("data-urgent", "true");
+      await expect(reloadBtn).toContainText("EMPTY!");
+      await expect(padPage.locator('.pad-mag-pip[data-filled="true"]')).toHaveCount(0);
+
+      // Tap phone reload button and verify magazine refills on both pad & host
+      await reloadBtn.click();
+      await expect(reloadBtn).toHaveAttribute("data-urgent", "false");
+      await expect(reloadBtn).toContainText("Ready 6/6");
+      await expect(padPage.locator('.pad-mag-pip[data-filled="true"]')).toHaveCount(6);
+      await expect(hostPage.locator('.ammo-dot[data-filled="true"]')).toHaveCount(6);
+    } finally {
+      await padContext.close();
+      await hostContext.close();
     }
   });
 });

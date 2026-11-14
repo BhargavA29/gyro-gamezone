@@ -1,5 +1,6 @@
 import { Client, type Room } from "@colyseus/sdk";
 import type {
+  DifficultyPreset,
   GameId,
   PartyRoomStateSnapshot,
   PlayerSlotState,
@@ -49,6 +50,7 @@ interface RawRoomState {
   roomCode?: unknown;
   phase?: unknown;
   selectedGame?: unknown;
+  difficulty?: unknown;
   phaseStartedAt?: unknown;
   roundDurationMs?: unknown;
   hostConnected?: unknown;
@@ -89,6 +91,9 @@ export function snapshotRoomState(room: Room): PartyRoomStateSnapshot {
     roomCode: String(raw?.roomCode ?? room.roomId ?? ""),
     phase: (raw?.phase ?? "lobby") as RoomPhase,
     selectedGame: (raw?.selectedGame ?? "aim-demo") as GameId,
+    difficulty: (raw?.difficulty === "casual" || raw?.difficulty === "pro"
+      ? raw.difficulty
+      : "arcade") as DifficultyPreset,
     phaseStartedAt: Number(raw?.phaseStartedAt ?? 0),
     roundDurationMs: Number(raw?.roundDurationMs ?? 0),
     hostConnected: Boolean(raw?.hostConnected),

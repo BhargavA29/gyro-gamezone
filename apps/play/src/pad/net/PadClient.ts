@@ -23,10 +23,19 @@ interface SavedSession {
   avatarId: AvatarId;
 }
 
+export interface PadHudPayload {
+  ammo: number;
+  maxAmmo: number;
+  reloading: boolean;
+  streak: number;
+  prompt?: string;
+}
+
 export interface PadConnectionEvents {
   onState: (state: PartyRoomStateSnapshot, mySlot: number) => void;
   onStatus: (status: "connecting" | "connected" | "reconnecting" | "disconnected", detail?: string) => void;
   onHaptic: (pattern: HapticPattern) => void;
+  onPadHud?: (hud: PadHudPayload) => void;
   onRtt: (rttMs: number) => void;
   onError: (message: string) => void;
 }
@@ -143,6 +152,15 @@ export class PadClient {
         }
         case "srv:haptic":
           this.events.onHaptic(msg.pattern);
+          break;
+        case "srv:pad_hud":
+          this.events.onPadHud?.({
+            ammo: msg.ammo,
+            maxAmmo: msg.maxAmmo,
+            reloading: msg.reloading,
+            streak: msg.streak,
+            ...(msg.prompt !== undefined ? { prompt: msg.prompt } : {}),
+          });
           break;
         case "srv:error":
           this.events.onError(msg.message);

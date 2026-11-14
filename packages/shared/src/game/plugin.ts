@@ -1,5 +1,5 @@
 import type { GestureKind, HapticPattern } from "../protocol.js";
-import type { GameId, PlayerSlotState, RoomPhase } from "../room-state.js";
+import type { DifficultyPreset, GameId, PlayerSlotState, RoomPhase } from "../room-state.js";
 
 export interface PlayerAimFrame {
   slot: 0 | 1 | 2 | 3;
@@ -33,6 +33,15 @@ export interface GameHudApi {
   setTutorialVisible(visible: boolean, lines?: readonly string[]): void;
   announce(text: string): void;
   updateScoreboard(players: ReadonlyArray<{ slot: number; name: string; colorHex: string; score: number }>): void;
+  setPlayerAmmoHud?(
+    players: ReadonlyArray<{
+      slot: number;
+      ammo: number;
+      maxAmmo: number;
+      reloading: boolean;
+      streak: number;
+    }>,
+  ): void;
 }
 
 export interface GameAudioApi {
@@ -42,9 +51,15 @@ export interface GameAudioApi {
       | "go"
       | "pop"
       | "shot"
+      | "dry_fire"
+      | "low_ammo"
+      | "reload_start"
       | "reload"
       | "hazard"
       | "hit"
+      | "bullseye"
+      | "gold_spawn"
+      | "gold_hit"
       | "combo"
       | "miss"
       | "bow_release"
@@ -64,11 +79,22 @@ export interface GameHostContext {
   container: HTMLElement;
   players: readonly PlayerSlotState[];
   seed: number;
+  difficulty: DifficultyPreset;
   getPhase(): RoomPhase;
   hud: GameHudApi;
   audio: GameAudioApi;
   fx: GameFxApi;
   sendHaptic(slot: number | "all", pattern: HapticPattern): void;
+  sendPadHud?(
+    slot: number | "all",
+    payload: {
+      ammo: number;
+      maxAmmo: number;
+      reloading: boolean;
+      streak: number;
+      prompt?: string;
+    },
+  ): void;
   finishRound(scores: Array<{ slot: number; score: number }>): void;
 }
 

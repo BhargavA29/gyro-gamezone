@@ -22,7 +22,7 @@ import {
 } from "@gyro/shared";
 import { avatarSvg, ICON_RECENTER } from "../common/avatars.js";
 import { bindThemeToggle, themeToggleHtml } from "../common/theme.js";
-import { PadClient } from "./net/PadClient.js";
+import { PadClient, type PadHudPayload } from "./net/PadClient.js";
 import { acquireWakeLock, lockPortraitOrientation, triggerHaptic } from "./pwa/ergonomics.js";
 import { GestureDetector } from "./sensors/gestures.js";
 import { GyroControllerPipeline } from "./sensors/orientation.js";
@@ -93,6 +93,7 @@ class PadApp {
   private lastGestureText = "Tap, hold, swipe, or flick";
   private lastGestureTs = 0;
   private lastGesturePower = 0;
+  private padHud: PadHudPayload | null = null;
 
   private rafId: number | null = null;
   private lastSendTs = 0;
@@ -150,6 +151,18 @@ class PadApp {
           me !== undefined &&
           (!prevMe || prevMe.slot !== me.slot || prevMe.name !== me.name || prevMe.colorHex !== me.colorHex);
 
+        if (
+          (state.phase === "lobby" ||
+            state.phase === "game_select" ||
+            state.phase === "calibration" ||
+            state.phase === "results") &&
+          this.padHud !== null
+        ) {
+          this.padHud = null;
+        }
+        if (state.phase === "playing" && state.selectedGame === "target-shooting" && !this.padHud) {
+          this.padHud = { ammo: 6, maxAmmo: 6, reloading: false, streak: 0 };
+        }
         if (state.phase === "calibration" && prevPhase !== "calibration") {
           this.calibStep = "still";
           this.startStillCalibration();
@@ -166,6 +179,10 @@ class PadApp {
       },
       onHaptic: (pattern) => {
         triggerHaptic(pattern);
+      },
+      onPadHud: (hud) => {
+        this.padHud = hud;
+        this.updatePadHudDom();
       },
       onRtt: (rtt) => {
         this.rttMs = rtt;
@@ -429,6 +446,58 @@ class PadApp {
       const game = GAME_CATALOG.find((g) => g.id === this.roomState?.selectedGame);
       phaseEl.textContent = `${game?.title ?? this.roomState.selectedGame} · ${this.roomState.phase}`;
     }
+    this.updatePadHudDom();
+  }
+
+  private renderAmmoPipsHtml(hud: PadHudPayload): string {
+    const isLow = hud.ammo > 0 && hud.ammo <= 2 && !hud.reloading;
+    return Array.from({ length: hud.maxAmmo }, (_, idx) => {
+      const filled = hud.reloading || idx < hud.ammo;
+      return `<span class="pad-mag-pip" data-filled="${filled}" data-low="${isLow && filled}"></span>`;
+    }).join("");
+  }
+
+  private updatePadHudDom(): void {
+    const ammoBar = this.root.querySelector<HTMLElement>("[data-pad-ammo]");
+    const reloadBtn = this.root.querySelector<HTMLButtonElement>("[data-pad-reload]");
+    const readout = this.root.querySelector<HTMLElement>("[data-gesture-readout]");
+
+    const activeTargetGame =
+      this.roomState?.phase === "playing" &&
+      this.roomState.selectedGame === "target-shooting" &&
+      this.padHud !== null;
+
+    if (ammoBar) {
+      ammoBar.hidden = !activeTargetGame;
+      if (activeTargetGame && this.padHud) {
+        ammoBar.innerHTML = this.renderAmmoPipsHtml(this.padHud);
+      }
+    }
+
+    if (reloadBtn) {
+      reloadBtn.hidden = !activeTargetGame;
+      if (activeTargetGame && this.padHud) {
+        const hud = this.padHud;
+        const isEmpty = hud.ammo === 0 && !hud.reloading;
+        const isLow = hud.ammo > 0 && hud.ammo <= 2 && !hud.reloading;
+        reloadBtn.disabled = hud.reloading;
+        reloadBtn.dataset.urgent = String(isEmpty);
+        reloadBtn.dataset.low = String(isLow);
+        if (hud.reloading) {
+          reloadBtn.textContent = "Reloading…";
+        } else if (isEmpty) {
+          reloadBtn.textContent = "EMPTY! FLICK ↑ OR TAP RELOAD";
+        } else if (hud.ammo < hud.maxAmmo) {
+          reloadBtn.textContent = `↻ Reload (${hud.ammo}/${hud.maxAmmo})`;
+        } else {
+          reloadBtn.textContent = `Ready ${hud.ammo}/${hud.maxAmmo} · Flick ↑ anytime`;
+        }
+      }
+    }
+
+    if (readout && activeTargetGame && this.padHud?.prompt) {
+      readout.textContent = this.padHud.prompt;
+    }
   }
 
   private render(): void {
@@ -673,6 +742,22 @@ class PadApp {
           ? "Get Ready — Aim at Center!"
           : (game?.controlsSummary.slice(0, 2).join(" · ") ?? "Active Controller");
 
+    const showTargetHud =
+      state.phase === "playing" && state.selectedGame === "target-shooting" && this.padHud !== null;
+    const hud = this.padHud;
+    const hudPipsHtml = hud ? this.renderAmmoPipsHtml(hud) : "";
+    const isEmpty = hud ? hud.ammo === 0 && !hud.reloading : false;
+    const isLow = hud ? hud.ammo > 0 && hud.ammo <= 2 && !hud.reloading : false;
+    const reloadLabel = !hud
+      ? "↻ Flick ↑ or Tap Reload"
+      : hud.reloading
+        ? "Reloading…"
+        : isEmpty
+          ? "EMPTY! FLICK ↑ OR TAP RELOAD"
+          : hud.ammo < hud.maxAmmo
+            ? `↻ Reload (${hud.ammo}/${hud.maxAmmo})`
+            : `Ready ${hud.ammo}/${hud.maxAmmo} · Flick ↑ anytime`;
+
     return `
       ${sensorNotice}
       <div style="display:flex;justify-content:space-between;align-items:center;padding-inline:4px;">
@@ -684,9 +769,20 @@ class PadApp {
         <canvas class="aim-preview"></canvas>
         <div class="pad-surface-label">
           <strong>${activeHeadline}</strong>
-          <span class="field-hint" data-gesture-readout>${escapeHtml(this.lastGestureText)}</span>
+          <div class="pad-mag-bar" data-pad-ammo ${showTargetHud ? "" : "hidden"}>${hudPipsHtml}</div>
+          <span class="field-hint" data-gesture-readout>${escapeHtml(hud?.prompt ?? this.lastGestureText)}</span>
         </div>
       </div>
+
+      <button
+        type="button"
+        class="pad-reload-btn"
+        data-pad-reload
+        data-urgent="${isEmpty}"
+        data-low="${isLow}"
+        ${showTargetHud ? "" : "hidden"}
+        ${hud?.reloading ? "disabled" : ""}
+      >${escapeHtml(reloadLabel)}</button>
 
       <div class="pad-footer">
         <button type="button" class="btn btn-primary" data-recenter>
@@ -768,6 +864,19 @@ class PadApp {
     });
     this.root.querySelector("[data-recenter]")?.addEventListener("click", () => {
       this.handleRecenter();
+    });
+    this.root.querySelector("[data-pad-reload]")?.addEventListener("click", () => {
+      this.gestureSeq += 1;
+      triggerHaptic("tap");
+      this.padClient.sendControl({
+        type: "pad:gesture",
+        seq: this.gestureSeq,
+        kind: "flick",
+        dx: 0,
+        dy: -1,
+        power: 1.0,
+        clientTs: performance.now(),
+      });
     });
     this.root.querySelector("[data-leave-room]")?.addEventListener("click", () => {
       void this.padClient.leave().then(() => {

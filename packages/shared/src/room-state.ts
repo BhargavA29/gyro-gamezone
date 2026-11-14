@@ -119,10 +119,37 @@ export interface PlayerSlotState {
   wins: number;
 }
 
+export type DifficultyPreset = "casual" | "arcade" | "pro";
+
+export interface DifficultyMeta {
+  id: DifficultyPreset;
+  label: string;
+  shortDesc: string;
+}
+
+export const DIFFICULTY_PRESETS: readonly DifficultyMeta[] = [
+  {
+    id: "casual",
+    label: "Chill",
+    shortDesc: "Gentle opening pace, larger targets, soft difficulty ramp",
+  },
+  {
+    id: "arcade",
+    label: "Arcade",
+    shortDesc: "Balanced rhythm, steady 60s wave escalation",
+  },
+  {
+    id: "pro",
+    label: "Turbo",
+    shortDesc: "Fast wave transitions, tighter bullseyes, 1.25× points",
+  },
+];
+
 export interface PartyRoomStateSnapshot {
   roomCode: string;
   phase: RoomPhase;
   selectedGame: GameId;
+  difficulty: DifficultyPreset;
   phaseStartedAt: number;
   roundDurationMs: number;
   hostConnected: boolean;

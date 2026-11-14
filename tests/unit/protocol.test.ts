@@ -80,6 +80,43 @@ describe("protocol packing and validation", () => {
       gameId: "archery",
     });
     expect(parseHostMessage({ type: "host:select_game", gameId: "nope" })).toBeNull();
+
+    expect(parseHostMessage({ type: "host:set_difficulty", difficulty: "casual" })).toEqual({
+      type: "host:set_difficulty",
+      difficulty: "casual",
+    });
+    expect(parseHostMessage({ type: "host:set_difficulty", difficulty: "impossible" })).toBeNull();
+
+    expect(
+      parseHostMessage({
+        type: "host:pad_hud",
+        slot: 0,
+        ammo: -4,
+        maxAmmo: 6,
+        reloading: true,
+        streak: 1200,
+        prompt: "Flick up to reload!",
+      }),
+    ).toEqual({
+      type: "host:pad_hud",
+      slot: 0,
+      ammo: 0,
+      maxAmmo: 6,
+      reloading: true,
+      streak: 999,
+      prompt: "Flick up to reload!",
+    });
+    expect(
+      parseHostMessage({
+        type: "host:pad_hud",
+        slot: 9,
+        ammo: 3,
+        maxAmmo: 6,
+        reloading: false,
+        streak: 0,
+      }),
+    ).toBeNull();
+
     expect(sanitizePlayerName("")).toBe("Player");
   });
 });

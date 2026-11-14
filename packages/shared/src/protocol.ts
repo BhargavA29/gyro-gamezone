@@ -7,7 +7,7 @@ import {
   PLAYER_AVATARS,
   type AvatarId,
 } from "./constants.js";
-import type { GameId, RoomPhase } from "./room-state.js";
+import type { DifficultyPreset, GameId, RoomPhase } from "./room-state.js";
 
 export const INPUT_PACKET_BYTES = 28 as const;
 
@@ -152,6 +152,7 @@ export type PadToServerMessage =
 
 export type HostToServerMessage =
   | { type: "host:select_game"; gameId: GameId }
+  | { type: "host:set_difficulty"; difficulty: DifficultyPreset }
   | { type: "host:set_phase"; phase: RoomPhase }
   | { type: "host:start_round"; seed: number }
   | {
@@ -162,6 +163,15 @@ export type HostToServerMessage =
       type: "host:haptic";
       slot: number | "all";
       pattern: HapticPattern;
+    }
+  | {
+      type: "host:pad_hud";
+      slot: number | "all";
+      ammo: number;
+      maxAmmo: number;
+      reloading: boolean;
+      streak: number;
+      prompt?: string;
     }
   | { type: "host:kick"; slot: number }
   | { type: "net:ping"; t0: number };
@@ -209,6 +219,14 @@ export type ServerToClientMessage =
   | {
       type: "srv:haptic";
       pattern: HapticPattern;
+    }
+  | {
+      type: "srv:pad_hud";
+      ammo: number;
+      maxAmmo: number;
+      reloading: boolean;
+      streak: number;
+      prompt?: string;
     }
   | {
       type: "srv:round_start";
@@ -412,6 +430,41 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
         type: "host:haptic",
         slot: Math.floor(raw.slot),
         pattern: raw.pattern as HapticPattern,
+      };
+    }
+    case "host:set_difficulty":
+      if (
+        raw.difficulty !== "casual" &&
+        raw.difficulty !== "arcade" &&
+        raw.difficulty !== "pro"
+      ) {
+        return null;
+      }
+      return { type: "host:set_difficulty", difficulty: raw.difficulty };
+    case "host:pad_hud": {
+      const slot =
+        raw.slot === "all"
+          ? "all"
+          : isFiniteNum(raw.slot) && raw.slot >= 0 && raw.slot < MAX_PLAYERS
+            ? Math.floor(raw.slot)
+            : null;
+      if (slot === null) return null;
+      if (!isFiniteNum(raw.ammo) || !isFiniteNum(raw.maxAmmo) || !isFiniteNum(raw.streak)) {
+        return null;
+      }
+      const reloading = typeof raw.reloading === "boolean" ? raw.reloading : false;
+      const maxAmmo = Math.max(1, Math.min(32, Math.round(raw.maxAmmo)));
+      const ammo = Math.max(0, Math.min(maxAmmo, Math.round(raw.ammo)));
+      const streak = Math.max(0, Math.min(999, Math.round(raw.streak)));
+      const rawPrompt = typeof raw.prompt === "string" ? raw.prompt.trim().slice(0, 32) : "";
+      return {
+        type: "host:pad_hud",
+        slot,
+        ammo,
+        maxAmmo,
+        reloading,
+        streak,
+        ...(rawPrompt.length > 0 ? { prompt: rawPrompt } : {}),
       };
     }
     case "host:kick":

@@ -82,6 +82,7 @@ export class PartyRoom extends Room<{ state: PartyStateInstance }> {
     this.state.roomCode = code;
     this.state.phase = "lobby";
     this.state.selectedGame = "aim-demo";
+    this.state.difficulty = "arcade";
     this.state.phaseStartedAt = Date.now();
 
     this.registerMessageHandlers();
@@ -407,6 +408,27 @@ export class PartyRoom extends Room<{ state: PartyStateInstance }> {
         }
         this.state.phase = "results";
         this.state.phaseStartedAt = Date.now();
+        break;
+      }
+      case "host:set_difficulty": {
+        this.state.difficulty = msg.difficulty;
+        break;
+      }
+      case "host:pad_hud": {
+        for (const c of this.clients) {
+          const m = this.sessions.get(c.sessionId);
+          if (!m || m.role !== "pad") continue;
+          if (msg.slot === "all" || m.slot === msg.slot) {
+            this.sendTyped(c, {
+              type: "srv:pad_hud",
+              ammo: msg.ammo,
+              maxAmmo: msg.maxAmmo,
+              reloading: msg.reloading,
+              streak: msg.streak,
+              ...(msg.prompt !== undefined ? { prompt: msg.prompt } : {}),
+            });
+          }
+        }
         break;
       }
       case "host:haptic": {
