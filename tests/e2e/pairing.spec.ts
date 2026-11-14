@@ -306,23 +306,34 @@ test.describe("Host + Pad Pairing, Calibration, Reconnect, & Aim Lab", () => {
       await expect(hostPage.locator("[data-hud-title]")).toHaveText("Fruit Slicer");
       await expect(hostPage.locator("[data-hud-difficulty]")).toHaveText("Arcade");
       await expect(hostPage.locator("[data-hud-timer]")).toBeVisible();
-      await expect(hostPage.locator("canvas.host-stage-canvas")).toBeVisible();
+      await expect(hostPage.locator("canvas.host-stage-canvas.host-sword-cursor")).toBeVisible();
+      await expect(hostPage.locator("[data-hud-scoreboard] .life-pip[data-alive=\"true\"]")).toHaveCount(3);
 
-      // Pad hides Target Shooting magazine/reload controls and shows live Fruit Slicer prompt
+      // Pad hides Target Shooting controls, displays 3 life hearts and live Fruit Slicer prompt
       await expect(padPage.locator("[data-pad-reload]")).toBeHidden();
       await expect(padPage.locator("[data-pad-ammo]")).toBeHidden();
+      await expect(padPage.locator("[data-pad-lives]")).toBeVisible();
+      await expect(padPage.locator('.pad-life-pip[data-alive="true"]')).toHaveCount(3);
       await expect(padPage.locator("[data-gesture-readout]")).toContainText(
-        "Sweep phone or swipe to slice!",
+        "Hold=Safe Move · Fast=Slice!",
       );
 
-      // Swipe continuously across phone touch surface and verify host receives swipe gesture
+      // Hold + calm slide on phone stays in Safe Move mode (must NOT emit swipe or tap)
       await hostPage.locator("[data-toggle-debug]").click();
       const surface = padPage.locator("[data-pad-surface]");
       const sBox = await surface.boundingBox();
       if (!sBox) throw new Error("Missing pad surface bounding box");
+      await padPage.mouse.move(sBox.x + 60, sBox.y + sBox.height * 0.5);
+      await padPage.mouse.down();
+      await padPage.waitForTimeout(210);
+      await padPage.mouse.move(sBox.x + 140, sBox.y + sBox.height * 0.5, { steps: 6 });
+      await padPage.mouse.up();
+      await expect(hostPage.locator(".debug-drawer")).toContainText("Last gesture: P1 · hold_end");
+
+      // Fast intentional whip swipe across phone surface DOES trigger slice swipe
       await padPage.mouse.move(sBox.x + 28, sBox.y + sBox.height * 0.72);
       await padPage.mouse.down();
-      await padPage.mouse.move(sBox.x + sBox.width - 28, sBox.y + sBox.height * 0.28, { steps: 5 });
+      await padPage.mouse.move(sBox.x + sBox.width - 28, sBox.y + sBox.height * 0.28, { steps: 4 });
       await padPage.mouse.up();
       await expect(hostPage.locator(".debug-drawer")).toContainText("Last gesture: P1 · swipe");
 

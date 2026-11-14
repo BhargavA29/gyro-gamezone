@@ -26,6 +26,7 @@ export class GestureDetector {
   private swipeAnchorTs = 0;
   private lastLiveSwipeTs = 0;
   private liveSwipeFired = false;
+  private calmSlide = false;
   private holding = false;
   private holdTimer: number | null = null;
 
@@ -97,10 +98,11 @@ export class GestureDetector {
       this.downTs = performance.now();
       this.swipeAnchorTs = this.downTs;
       this.holding = false;
+      this.calmSlide = false;
       this.liveSwipeFired = false;
 
       this.holdTimer = window.setTimeout(() => {
-        if (this.activePointerId === e.pointerId) {
+        if (this.activePointerId === e.pointerId && !this.calmSlide) {
           this.holding = true;
           this.onGesture({
             kind: "hold_start",
@@ -110,7 +112,7 @@ export class GestureDetector {
             clientTs: performance.now(),
           });
         }
-      }, 210);
+      }, 170);
     };
 
     const onPointerMove = (e: PointerEvent) => {
@@ -125,18 +127,33 @@ export class GestureDetector {
         onDragDelta(dx / rect.width, dy / rect.height);
       }
 
-      if (this.holdTimer !== null && Math.hypot(e.clientX - this.downX, e.clientY - this.downY) >= 18) {
+      const totalDist = Math.hypot(e.clientX - this.downX, e.clientY - this.downY);
+      const totalElapsed = Math.max(1, now - this.downTs);
+
+      if (this.holdTimer !== null && totalDist >= 18) {
         window.clearTimeout(this.holdTimer);
         this.holdTimer = null;
       }
 
-      if (!this.holding) {
+      // If player glides slowly or drags gently after touch, treat as Safe Move (no swipe clicks)
+      if (
+        !this.holding &&
+        !this.calmSlide &&
+        !this.liveSwipeFired &&
+        totalDist >= 16 &&
+        totalElapsed >= 45 &&
+        totalDist / totalElapsed < 0.72
+      ) {
+        this.calmSlide = true;
+      }
+
+      if (!this.holding && !this.calmSlide) {
         const segDx = e.clientX - this.swipeAnchorX;
         const segDy = e.clientY - this.swipeAnchorY;
         const segDist = Math.hypot(segDx, segDy);
         const segElapsed = Math.max(1, now - this.swipeAnchorTs);
         const segSpeed = segDist / segElapsed;
-        if (segDist >= 40 && segSpeed >= 0.55 && now - this.lastLiveSwipeTs >= 95) {
+        if (segDist >= 56 && segSpeed >= 1.2 && now - this.lastLiveSwipeTs >= 110) {
           this.lastLiveSwipeTs = now;
           this.liveSwipeFired = true;
           this.onGesture({
@@ -149,7 +166,7 @@ export class GestureDetector {
           this.swipeAnchorX = e.clientX;
           this.swipeAnchorY = e.clientY;
           this.swipeAnchorTs = now;
-        } else if (segElapsed > 160 && segSpeed < 0.25) {
+        } else if (segElapsed > 160 && segSpeed < 0.35) {
           this.swipeAnchorX = e.clientX;
           this.swipeAnchorY = e.clientY;
           this.swipeAnchorTs = now;
@@ -173,6 +190,7 @@ export class GestureDetector {
 
       if (this.holding) {
         this.holding = false;
+        this.calmSlide = false;
         this.onGesture({
           kind: "hold_end",
           dx: 0,
@@ -183,13 +201,18 @@ export class GestureDetector {
         return;
       }
 
+      if (this.calmSlide) {
+        this.calmSlide = false;
+        return;
+      }
+
       if (this.liveSwipeFired) {
         const tailDx = e.clientX - this.swipeAnchorX;
         const tailDy = e.clientY - this.swipeAnchorY;
         const tailDist = Math.hypot(tailDx, tailDy);
         const tailElapsed = Math.max(1, now - this.swipeAnchorTs);
         const tailSpeed = tailDist / tailElapsed;
-        if (tailDist >= 28 && tailSpeed >= 0.55 && now - this.lastLiveSwipeTs >= 60) {
+        if (tailDist >= 36 && tailSpeed >= 1.2 && now - this.lastLiveSwipeTs >= 75) {
           this.onGesture({
             kind: "swipe",
             dx: clamp(tailDx / tailDist, -1, 1),
@@ -201,19 +224,21 @@ export class GestureDetector {
         return;
       }
 
-      if (dist >= 34 && elapsed <= 280) {
+      if (dist >= 54 && elapsed <= 220) {
         const speed = dist / elapsed; // px/ms
-        this.onGesture({
-          kind: "swipe",
-          dx: clamp(dx / dist, -1, 1),
-          dy: clamp(dy / dist, -1, 1),
-          power: clamp(speed / 1.4, 0.25, 2.5),
-          clientTs: now,
-        });
+        if (speed >= 1.2) {
+          this.onGesture({
+            kind: "swipe",
+            dx: clamp(dx / dist, -1, 1),
+            dy: clamp(dy / dist, -1, 1),
+            power: clamp(speed / 1.4, 0.25, 2.5),
+            clientTs: now,
+          });
+        }
         return;
       }
 
-      if (dist < 24 && elapsed < 250) {
+      if (dist < 22 && elapsed < 220) {
         this.onGesture({
           kind: "tap",
           dx: 0,
@@ -239,6 +264,6 @@ export class GestureDetector {
   }
 
   isHolding(): boolean {
-    return this.holding || this.activePointerId !== null;
+    return this.holding || this.calmSlide;
   }
 }

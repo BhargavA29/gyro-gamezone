@@ -16,17 +16,27 @@ import {
   createToonGradientTexture,
   observeThemeScheme,
 } from "../shared/ArcadeSceneUtils.js";
+import {
+  buildSwordVisual,
+  createFruitTexturePack,
+  type FruitTexturePack,
+  type SwordVisualRefs,
+} from "./fruitVisuals.js";
 
 const CAMERA_Z = 14;
 const FOV_DEG = 42;
 const ROUND_DURATION_MS = 60_000;
 const MAX_FRUITS = 14;
 const SPLIT_POOL_SIZE = 28;
+const SPLAT_POOL_SIZE = 28;
 const FLASH_POOL_SIZE = 10;
+const MAX_QUEUED_SPAWNS = 24;
 const TRAIL_POINTS = 14;
 const COMBO_WINDOW_S = 0.28;
+const MAX_LIVES = 3;
 
 type EntityKind = "watermelon" | "orange" | "kiwi" | "pineapple" | "starfruit" | "bomb";
+type FruitOnlyKind = Exclude<EntityKind, "bomb">;
 
 interface FruitStyle {
   radius: number;
@@ -38,35 +48,35 @@ interface FruitStyle {
 
 const FRUIT_STYLES: Record<EntityKind, FruitStyle> = {
   watermelon: {
-    radius: 0.9,
+    radius: 0.92,
     basePts: 100,
     rindHex: 0x16a34a,
     fleshHex: 0xff3b5c,
-    juiceHex: 0xff4966,
+    juiceHex: 0xff3b5c,
   },
   orange: {
-    radius: 0.68,
+    radius: 0.7,
     basePts: 120,
     rindHex: 0xf97316,
     fleshHex: 0xfdba74,
     juiceHex: 0xff8a1e,
   },
   kiwi: {
-    radius: 0.6,
+    radius: 0.64,
     basePts: 140,
-    rindHex: 0x84cc16,
-    fleshHex: 0xbef264,
-    juiceHex: 0xa3e635,
+    rindHex: 0x8f6237,
+    fleshHex: 0xa3e635,
+    juiceHex: 0x84cc16,
   },
   pineapple: {
-    radius: 0.78,
+    radius: 0.8,
     basePts: 180,
     rindHex: 0xeab308,
     fleshHex: 0xfef08a,
     juiceHex: 0xfacc15,
   },
   starfruit: {
-    radius: 0.74,
+    radius: 0.76,
     basePts: 300,
     rindHex: 0xffd028,
     fleshHex: 0xfff8b3,
@@ -74,8 +84,8 @@ const FRUIT_STYLES: Record<EntityKind, FruitStyle> = {
   },
   bomb: {
     radius: 0.76,
-    basePts: -200,
-    rindHex: 0x1f2430,
+    basePts: -150,
+    rindHex: 0x1c212c,
     fleshHex: 0xff3b30,
     juiceHex: 0xff3b30,
   },
@@ -98,11 +108,11 @@ const DIFFICULTY_TUNING: Record<DifficultyPreset, DifficultyConfig> = {
   casual: {
     gravity: 8.8,
     waveCounts: [3, 4, 5],
-    waveIntervals: [1.85, 1.55, 1.3],
+    waveIntervals: [1.95, 1.6, 1.35],
     wave2Sec: 18,
     wave3Sec: 38,
-    bombUnlockSec: 14,
-    bombChance: 0.09,
+    bombUnlockSec: 12,
+    bombChance: 0.11,
     scaleMult: 1.12,
     scoreMult: 1.0,
     musicBpm: 120,
@@ -110,11 +120,11 @@ const DIFFICULTY_TUNING: Record<DifficultyPreset, DifficultyConfig> = {
   arcade: {
     gravity: 11.2,
     waveCounts: [3, 5, 6],
-    waveIntervals: [1.55, 1.25, 0.98],
+    waveIntervals: [1.6, 1.3, 1.05],
     wave2Sec: 15,
     wave3Sec: 35,
-    bombUnlockSec: 10,
-    bombChance: 0.15,
+    bombUnlockSec: 8,
+    bombChance: 0.16,
     scaleMult: 1.0,
     scoreMult: 1.0,
     musicBpm: 132,
@@ -122,11 +132,11 @@ const DIFFICULTY_TUNING: Record<DifficultyPreset, DifficultyConfig> = {
   pro: {
     gravity: 13.6,
     waveCounts: [4, 6, 8],
-    waveIntervals: [1.25, 0.95, 0.74],
+    waveIntervals: [1.3, 1.0, 0.78],
     wave2Sec: 11,
     wave3Sec: 27,
-    bombUnlockSec: 7,
-    bombChance: 0.21,
+    bombUnlockSec: 5,
+    bombChance: 0.22,
     scaleMult: 0.92,
     scoreMult: 1.25,
     musicBpm: 144,
@@ -134,11 +144,7 @@ const DIFFICULTY_TUNING: Record<DifficultyPreset, DifficultyConfig> = {
 };
 
 interface BladeSlot {
-  group: THREE.Group;
-  ringMesh: THREE.Mesh;
-  coreMesh: THREE.Mesh;
-  ringMat: THREE.MeshBasicMaterial;
-  coreMat: THREE.MeshBasicMaterial;
+  sword: SwordVisualRefs;
   trailMesh: THREE.Mesh;
   trailMat: THREE.MeshBasicMaterial;
   trailGeo: THREE.BufferGeometry;
@@ -150,6 +156,7 @@ interface BladeSlot {
   prevWorldX: number;
   prevWorldY: number;
   rollRad: number;
+  swingTilt: number;
   connected: boolean;
   primaryDown: boolean;
   bladeHot: boolean;
@@ -199,12 +206,34 @@ interface SlicedHalf {
   scale: number;
 }
 
+interface JuiceSplat {
+  active: boolean;
+  mesh: THREE.Mesh;
+  mat: THREE.MeshBasicMaterial;
+  x: number;
+  y: number;
+  z: number;
+  baseScale: number;
+  age: number;
+  maxAge: number;
+}
+
 interface SlashFlash {
   active: boolean;
   mesh: THREE.Mesh;
   mat: THREE.MeshBasicMaterial;
   age: number;
   maxAge: number;
+}
+
+interface QueuedToss {
+  active: boolean;
+  delayS: number;
+  mode: "fruit" | "bomb" | "starfruit";
+  startXFrac: number;
+  inwardDir: number;
+  peakFrac: number;
+  isFrenzy: boolean;
 }
 
 export class FruitSlicerGame implements GamePlugin {
@@ -217,6 +246,7 @@ export class FruitSlicerGame implements GamePlugin {
   private scene!: THREE.Scene;
   private camera!: THREE.PerspectiveCamera;
   private toonGradient!: THREE.DataTexture;
+  private texPack!: FruitTexturePack;
   private tuning: DifficultyConfig = DIFFICULTY_TUNING.arcade;
 
   private halfH = Math.tan(THREE.MathUtils.degToRad(FOV_DEG / 2)) * CAMERA_Z;
@@ -229,10 +259,12 @@ export class FruitSlicerGame implements GamePlugin {
   private frenzyTimer = 0;
   private frenzyBurstTimer = 0;
   private starCooldown = 8;
+  private lastSpawnXFrac = 0;
   private tutorialHidden = false;
   private feverAnnounced = false;
   private musicStarted = false;
   private roundFinished = false;
+  private gameOverDelayS = -1;
   private localShake = 0;
   private flashTimer = 0;
 
@@ -248,14 +280,19 @@ export class FruitSlicerGame implements GamePlugin {
   private entities: TossedEntity[] = [];
   private halves: SlicedHalf[] = [];
   private halfCursor = 0;
+  private splats: JuiceSplat[] = [];
+  private splatCursor = 0;
   private flashes: SlashFlash[] = [];
   private flashCursor = 0;
+  private readonly spawnQueue: QueuedToss[] = [];
 
   private particles!: ArcadeParticlePool;
   private shockwaves!: ArcadeShockwavePool;
 
-  // Zero-allocation per-player scoring & combo state
+  // Zero-allocation per-player scoring, lives & combo state
   private readonly scores = new Int32Array(MAX_PLAYERS);
+  private readonly lives = new Int8Array(MAX_PLAYERS);
+  private readonly eliminated = new Uint8Array(MAX_PLAYERS);
   private readonly comboCounts = new Int32Array(MAX_PLAYERS);
   private readonly comboTimers = new Float32Array(MAX_PLAYERS);
   private readonly comboLastX = new Float32Array(MAX_PLAYERS);
@@ -271,26 +308,43 @@ export class FruitSlicerGame implements GamePlugin {
     this.rng = createSeededRng(ctx.seed);
 
     this.scores.fill(0);
+    this.lives.fill(MAX_LIVES);
+    this.eliminated.fill(0);
     this.comboCounts.fill(0);
     this.comboTimers.fill(0);
     this.swipeFlashCooldown.fill(0);
 
     this.simTime = 0;
     this.roundElapsedMs = 0;
-    this.waveTimer = 0.25;
+    this.waveTimer = 0.22;
     this.currentWave = 1;
     this.frenzyTimer = 0;
     this.frenzyBurstTimer = 0;
     this.starCooldown = 8.5;
+    this.lastSpawnXFrac = 0;
     this.tutorialHidden = false;
     this.feverAnnounced = false;
     this.musicStarted = false;
     this.roundFinished = false;
+    this.gameOverDelayS = -1;
     this.localShake = 0;
     this.flashTimer = 0;
 
+    this.spawnQueue.length = 0;
+    for (let i = 0; i < MAX_QUEUED_SPAWNS; i++) {
+      this.spawnQueue.push({
+        active: false,
+        delayS: 0,
+        mode: "fruit",
+        startXFrac: 0,
+        inwardDir: 0,
+        peakFrac: 0.5,
+        isFrenzy: false,
+      });
+    }
+
     this.canvas = document.createElement("canvas");
-    this.canvas.className = "host-stage-canvas";
+    this.canvas.className = "host-stage-canvas host-sword-cursor";
     ctx.container.replaceChildren(this.canvas);
 
     this.renderer = new THREE.WebGLRenderer({
@@ -310,19 +364,21 @@ export class FruitSlicerGame implements GamePlugin {
     this.camera.position.set(0, 0, CAMERA_Z);
 
     this.toonGradient = createToonGradientTexture();
-    this.disposables.push(this.toonGradient);
+    this.texPack = createFruitTexturePack();
+    this.disposables.push(this.toonGradient, ...this.texPack.disposables);
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x2b3345, 1.4);
-    const key = new THREE.DirectionalLight(0xffffff, 1.25);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x2b3345, 1.45);
+    const key = new THREE.DirectionalLight(0xffffff, 1.3);
     key.position.set(5, 11, 12);
     this.scene.add(hemi, key);
 
     this.buildDojoBackdrop();
+    this.buildSplatPool();
     this.buildEntityPool();
     this.buildSplitHalfPool();
     this.buildSlashFlashPool();
     this.buildBladeSlots();
-    this.particles = new ArcadeParticlePool(this.scene, 260, 0.12);
+    this.particles = new ArcadeParticlePool(this.scene, 280, 0.13);
     this.shockwaves = new ArcadeShockwavePool(this.scene, 14);
 
     this.detachThemeObserver = observeThemeScheme((scheme) => this.applyThemePalette(scheme));
@@ -337,17 +393,17 @@ export class FruitSlicerGame implements GamePlugin {
 
     this.ctx.hud.setRoundTimer(ROUND_DURATION_MS);
     this.ctx.hud.setTutorialVisible(true, [
-      `Difficulty: ${diffLabel} · Sweep phone swiftly OR swipe pad to slice`,
-      "Cut 3+ fruits together for Combo Multipliers",
-      "Golden Starfruit = Frenzy Cascade · Dodge red Bombs (-200)",
+      `Difficulty: ${diffLabel} · Whip wrist or fast swipe pad to slice`,
+      "Hold screen / left mouse to move sword safely without slicing",
+      "3 Lives ♥♥♥ · Hit 3 red Bombs = Game Over!",
     ]);
     this.syncScoreboardHud();
     this.ctx.sendPadHud?.("all", {
-      ammo: 6,
-      maxAmmo: 6,
+      ammo: MAX_LIVES,
+      maxAmmo: MAX_LIVES,
       reloading: false,
       streak: 0,
-      prompt: "Sweep phone or swipe to slice!",
+      prompt: "Hold=Safe Move · Fast=Slice!",
     });
   }
 
@@ -404,59 +460,147 @@ export class FruitSlicerGame implements GamePlugin {
     this.backGrid = back;
   }
 
-  private buildEntityPool(): void {
-    const melonGeo = new THREE.IcosahedronGeometry(0.84, 1);
-    const bandGeo = new THREE.TorusGeometry(0.85, 0.08, 6, 18);
-    const orangeGeo = new THREE.DodecahedronGeometry(0.65, 1);
-    const stemGeo = new THREE.ConeGeometry(0.14, 0.28, 6);
-    const kiwiGeo = new THREE.CylinderGeometry(0.56, 0.56, 0.68, 12);
-    const pineGeo = new THREE.CylinderGeometry(0.6, 0.66, 1.05, 8);
-    const crownGeo = new THREE.ConeGeometry(0.42, 0.62, 6);
-    const starGeo = new THREE.OctahedronGeometry(0.68, 0);
-    const starHaloGeo = new THREE.TorusGeometry(0.92, 0.06, 8, 22);
-    const bombGeo = new THREE.DodecahedronGeometry(0.7, 0);
-    const fuseGeo = new THREE.CylinderGeometry(0.14, 0.18, 0.28, 8);
-    const sparkGeo = new THREE.OctahedronGeometry(0.17, 0);
-    const xBarGeo = new THREE.BoxGeometry(0.86, 0.16, 0.14);
-    const warnRingGeo = new THREE.RingGeometry(0.86, 0.98, 24);
+  private buildSplatPool(): void {
+    const splatGeo = new THREE.PlaneGeometry(2.3, 2.3);
+    this.disposables.push(splatGeo);
 
-    const greenMat = new THREE.MeshToonMaterial({ color: 0x16a34a, gradientMap: this.toonGradient });
-    const darkGreenMat = new THREE.MeshToonMaterial({ color: 0x14532d, gradientMap: this.toonGradient });
-    const orangeMat = new THREE.MeshToonMaterial({ color: 0xf97316, gradientMap: this.toonGradient });
-    const limeMat = new THREE.MeshToonMaterial({ color: 0x84cc16, gradientMap: this.toonGradient });
-    const pineMat = new THREE.MeshToonMaterial({ color: 0xeab308, gradientMap: this.toonGradient });
-    const tealLeafMat = new THREE.MeshToonMaterial({ color: 0x10b981, gradientMap: this.toonGradient });
-    const goldMat = new THREE.MeshToonMaterial({ color: 0xffd028, gradientMap: this.toonGradient });
+    for (let i = 0; i < SPLAT_POOL_SIZE; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        map: this.texPack.splats[i % this.texPack.splats.length]!,
+        color: 0xff3b5c,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+      });
+      this.disposables.push(mat);
+      const mesh = new THREE.Mesh(splatGeo, mat);
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.splats.push({
+        active: false,
+        mesh,
+        mat,
+        x: 0,
+        y: 0,
+        z: -2.6,
+        baseScale: 1,
+        age: 0,
+        maxAge: 4.8,
+      });
+    }
+  }
+
+  private buildEntityPool(): void {
+    const melonGeo = new THREE.SphereGeometry(0.84, 22, 16);
+    const stemGeo = new THREE.CylinderGeometry(0.06, 0.09, 0.24, 8);
+    const orangeGeo = new THREE.SphereGeometry(0.66, 20, 14);
+    const orangeNubGeo = new THREE.ConeGeometry(0.13, 0.22, 6);
+    const kiwiGeo = new THREE.SphereGeometry(0.6, 18, 14);
+    const pineGeo = new THREE.SphereGeometry(0.66, 18, 14);
+    const crownLeafGeo = new THREE.ConeGeometry(0.18, 0.65, 5);
+
+    // Sculpted 5-pointed starfruit prism
+    const starShape = new THREE.Shape();
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+      const r = i % 2 === 0 ? 0.78 : 0.36;
+      const px = Math.cos(a) * r;
+      const py = Math.sin(a) * r;
+      if (i === 0) starShape.moveTo(px, py);
+      else starShape.lineTo(px, py);
+    }
+    starShape.closePath();
+    const starGeo = new THREE.ExtrudeGeometry(starShape, {
+      depth: 0.42,
+      bevelEnabled: true,
+      bevelThickness: 0.08,
+      bevelSize: 0.06,
+      bevelSegments: 2,
+    });
+    starGeo.center();
+    const starHaloGeo = new THREE.TorusGeometry(0.95, 0.055, 8, 24);
+
+    const bombGeo = new THREE.SphereGeometry(0.7, 20, 14);
+    const collarGeo = new THREE.CylinderGeometry(0.22, 0.25, 0.16, 12);
+    const fuseGeo = new THREE.CylinderGeometry(0.08, 0.1, 0.3, 8);
+    const sparkGeo = new THREE.OctahedronGeometry(0.19, 0);
+    const warnRingGeo = new THREE.RingGeometry(0.88, 1.0, 28);
+
+    const melonMat = new THREE.MeshToonMaterial({
+      map: this.texPack.skins.watermelon,
+      color: 0xffffff,
+      gradientMap: this.toonGradient,
+    });
+    const orangeMat = new THREE.MeshToonMaterial({
+      map: this.texPack.skins.orange,
+      color: 0xffffff,
+      gradientMap: this.toonGradient,
+    });
+    const kiwiMat = new THREE.MeshToonMaterial({
+      map: this.texPack.skins.kiwi,
+      color: 0xffffff,
+      gradientMap: this.toonGradient,
+    });
+    const pineMat = new THREE.MeshToonMaterial({
+      map: this.texPack.skins.pineapple,
+      color: 0xffffff,
+      gradientMap: this.toonGradient,
+    });
+    const starMat = new THREE.MeshToonMaterial({
+      map: this.texPack.skins.starfruit,
+      color: 0xffffff,
+      gradientMap: this.toonGradient,
+    });
+    const leafMat = new THREE.MeshToonMaterial({
+      color: 0x10b981,
+      gradientMap: this.toonGradient,
+    });
+    const brownStemMat = new THREE.MeshToonMaterial({
+      color: 0x5c3a1e,
+      gradientMap: this.toonGradient,
+    });
     const creamMat = new THREE.MeshBasicMaterial({ color: 0xfff8dc });
-    const bombBodyMat = new THREE.MeshToonMaterial({ color: 0x1c212c, gradientMap: this.toonGradient });
-    const bombAccentMat = new THREE.MeshBasicMaterial({ color: 0xff3b30 });
+    const bombMat = new THREE.MeshToonMaterial({
+      map: this.texPack.skins.bomb,
+      color: 0xffffff,
+      gradientMap: this.toonGradient,
+    });
+    const collarMat = new THREE.MeshToonMaterial({
+      color: 0x4b5563,
+      gradientMap: this.toonGradient,
+    });
+    const ropeMat = new THREE.MeshToonMaterial({
+      color: 0xd6b07a,
+      gradientMap: this.toonGradient,
+    });
     const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffb800 });
 
     this.disposables.push(
       melonGeo,
-      bandGeo,
-      orangeGeo,
       stemGeo,
+      orangeGeo,
+      orangeNubGeo,
       kiwiGeo,
       pineGeo,
-      crownGeo,
+      crownLeafGeo,
       starGeo,
       starHaloGeo,
       bombGeo,
+      collarGeo,
       fuseGeo,
       sparkGeo,
-      xBarGeo,
       warnRingGeo,
-      greenMat,
-      darkGreenMat,
+      melonMat,
       orangeMat,
-      limeMat,
+      kiwiMat,
       pineMat,
-      tealLeafMat,
-      goldMat,
+      starMat,
+      leafMat,
+      brownStemMat,
       creamMat,
-      bombBodyMat,
-      bombAccentMat,
+      bombMat,
+      collarMat,
+      ropeMat,
       sparkMat,
     );
 
@@ -466,61 +610,70 @@ export class FruitSlicerGame implements GamePlugin {
 
       // Watermelon
       const gMelon = new THREE.Group();
-      const mBody = new THREE.Mesh(melonGeo, greenMat);
-      const mStripe1 = new THREE.Mesh(bandGeo, darkGreenMat);
-      mStripe1.rotation.y = Math.PI / 2;
-      gMelon.add(mBody, mStripe1);
+      const mBody = new THREE.Mesh(melonGeo, melonMat);
+      const mStem = new THREE.Mesh(stemGeo, brownStemMat);
+      mStem.position.y = 0.88;
+      gMelon.add(mBody, mStem);
 
       // Orange
       const gOrange = new THREE.Group();
       const oBody = new THREE.Mesh(orangeGeo, orangeMat);
-      const oStem = new THREE.Mesh(stemGeo, tealLeafMat);
-      oStem.position.y = 0.68;
-      gOrange.add(oBody, oStem);
+      const oNub = new THREE.Mesh(orangeNubGeo, leafMat);
+      oNub.position.y = 0.7;
+      gOrange.add(oBody, oNub);
 
-      // Kiwi
+      // Kiwi (authentic fuzzy brown oval)
       const gKiwi = new THREE.Group();
-      const kBody = new THREE.Mesh(kiwiGeo, limeMat);
-      kBody.rotation.z = Math.PI / 2;
-      gKiwi.add(kBody);
+      const kBody = new THREE.Mesh(kiwiGeo, kiwiMat);
+      kBody.scale.set(1.22, 0.9, 0.9);
+      const kNub = new THREE.Mesh(stemGeo, brownStemMat);
+      kNub.rotation.z = Math.PI / 2;
+      kNub.position.x = 0.72;
+      gKiwi.add(kBody, kNub);
 
-      // Pineapple
+      // Pineapple with 3-leaf crown
       const gPine = new THREE.Group();
       const pBody = new THREE.Mesh(pineGeo, pineMat);
-      const pCrown = new THREE.Mesh(crownGeo, tealLeafMat);
-      pCrown.position.y = 0.78;
-      gPine.add(pBody, pCrown);
+      pBody.scale.set(0.94, 1.32, 0.94);
+      const pLeaf1 = new THREE.Mesh(crownLeafGeo, leafMat);
+      pLeaf1.position.y = 0.98;
+      const pLeaf2 = new THREE.Mesh(crownLeafGeo, leafMat);
+      pLeaf2.position.set(-0.2, 0.92, 0);
+      pLeaf2.rotation.z = 0.42;
+      const pLeaf3 = new THREE.Mesh(crownLeafGeo, leafMat);
+      pLeaf3.position.set(0.2, 0.92, 0);
+      pLeaf3.rotation.z = -0.42;
+      gPine.add(pBody, pLeaf1, pLeaf2, pLeaf3);
 
-      // Starfruit (Bonus Frenzy)
+      // Starfruit
       const gStar = new THREE.Group();
-      const sCore = new THREE.Mesh(starGeo, goldMat);
+      const sCore = new THREE.Mesh(starGeo, starMat);
       const sHalo = new THREE.Mesh(starHaloGeo, creamMat);
       gStar.add(sCore, sHalo);
 
       // Bomb
       const gBomb = new THREE.Group();
-      const bBody = new THREE.Mesh(bombGeo, bombBodyMat);
-      const bFuse = new THREE.Mesh(fuseGeo, bombBodyMat);
-      bFuse.position.set(0.28, 0.72, 0);
-      bFuse.rotation.z = -0.35;
+      const bBody = new THREE.Mesh(bombGeo, bombMat);
+      // Orient textured red X face roughly forward
+      bBody.rotation.y = -Math.PI / 2;
+      const bCollar = new THREE.Mesh(collarGeo, collarMat);
+      bCollar.position.set(0.18, 0.68, 0);
+      bCollar.rotation.z = -0.28;
+      const bFuse = new THREE.Mesh(fuseGeo, ropeMat);
+      bFuse.position.set(0.28, 0.88, 0);
+      bFuse.rotation.z = -0.42;
       const bSpark = new THREE.Mesh(sparkGeo, sparkMat);
-      bSpark.position.set(0.38, 0.92, 0);
-      const bx1 = new THREE.Mesh(xBarGeo, bombAccentMat);
-      bx1.position.z = 0.68;
-      bx1.rotation.z = Math.PI / 4;
-      const bx2 = new THREE.Mesh(xBarGeo, bombAccentMat);
-      bx2.position.z = 0.68;
-      bx2.rotation.z = -Math.PI / 4;
+      bSpark.position.set(0.39, 1.06, 0);
       const bombWarnMat = new THREE.MeshBasicMaterial({
         color: 0xff3b30,
         transparent: true,
-        opacity: 0.75,
+        opacity: 0.78,
         side: THREE.DoubleSide,
       });
       this.disposables.push(bombWarnMat);
       const warnRing = new THREE.Mesh(warnRingGeo, bombWarnMat);
-      warnRing.position.z = -0.15;
-      gBomb.add(bBody, bFuse, bSpark, bx1, bx2, warnRing);
+      warnRing.position.z = -0.12;
+      gBomb.add(bBody, bCollar, bFuse, bSpark, warnRing);
 
       root.add(gMelon, gOrange, gKiwi, gPine, gStar, gBomb);
       this.scene.add(root);
@@ -557,8 +710,8 @@ export class FruitSlicerGame implements GamePlugin {
   }
 
   private buildSplitHalfPool(): void {
-    const domeGeo = new THREE.SphereGeometry(0.68, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-    const capGeo = new THREE.CircleGeometry(0.68, 12);
+    const domeGeo = new THREE.SphereGeometry(0.68, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+    const capGeo = new THREE.CircleGeometry(0.68, 22);
     capGeo.rotateX(Math.PI / 2);
     this.disposables.push(domeGeo, capGeo);
 
@@ -566,9 +719,15 @@ export class FruitSlicerGame implements GamePlugin {
       const group = new THREE.Group();
       group.visible = false;
 
-      const shellMat = new THREE.MeshToonMaterial({ color: 0x16a34a, gradientMap: this.toonGradient });
+      // Start warm with valid Texture maps so WebGL shader programs never recompile mid-round
+      const shellMat = new THREE.MeshToonMaterial({
+        map: this.texPack.skins.watermelon,
+        color: 0xffffff,
+        gradientMap: this.toonGradient,
+      });
       const fleshMat = new THREE.MeshBasicMaterial({
-        color: 0xff3b5c,
+        map: this.texPack.flesh.watermelon,
+        color: 0xffffff,
         side: THREE.DoubleSide,
       });
       this.disposables.push(shellMat, fleshMat);
@@ -628,11 +787,6 @@ export class FruitSlicerGame implements GamePlugin {
   }
 
   private buildBladeSlots(): void {
-    const ringGeo = new THREE.RingGeometry(0.22, 0.3, 24);
-    const coreGeo = new THREE.CircleGeometry(0.11, 16);
-    this.disposables.push(ringGeo, coreGeo);
-
-    // Pre-build triangle-strip index buffer for TRAIL_POINTS pairs
     const indices: number[] = [];
     for (let i = 0; i < TRAIL_POINTS - 1; i++) {
       const a = i * 2;
@@ -644,21 +798,9 @@ export class FruitSlicerGame implements GamePlugin {
 
     for (let slot = 0; slot < MAX_PLAYERS; slot++) {
       const palette = PLAYER_SLOT_PALETTE[slot]!;
-      const group = new THREE.Group();
-      group.visible = false;
+      const sword = buildSwordVisual(palette.hex, this.disposables);
+      sword.group.visible = false;
 
-      const ringMat = new THREE.MeshBasicMaterial({
-        color: palette.hex,
-        transparent: true,
-        opacity: 0.9,
-        side: THREE.DoubleSide,
-      });
-      const coreMat = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.95,
-        side: THREE.DoubleSide,
-      });
       const trailMat = new THREE.MeshBasicMaterial({
         color: palette.hex,
         transparent: true,
@@ -672,22 +814,15 @@ export class FruitSlicerGame implements GamePlugin {
       trailGeo.setAttribute("position", new THREE.BufferAttribute(trailPositions, 3));
       trailGeo.setIndex(indices);
 
-      this.disposables.push(ringMat, coreMat, trailMat, trailGeo);
+      this.disposables.push(trailMat, trailGeo);
 
-      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-      const coreMesh = new THREE.Mesh(coreGeo, coreMat);
       const trailMesh = new THREE.Mesh(trailGeo, trailMat);
       trailMesh.frustumCulled = false;
 
-      group.add(ringMesh, coreMesh);
-      this.scene.add(group, trailMesh);
+      this.scene.add(sword.group, trailMesh);
 
       this.blades.push({
-        group,
-        ringMesh,
-        coreMesh,
-        ringMat,
-        coreMat,
+        sword,
         trailMesh,
         trailMat,
         trailGeo,
@@ -699,6 +834,7 @@ export class FruitSlicerGame implements GamePlugin {
         prevWorldX: 0,
         prevWorldY: 0,
         rollRad: 0,
+        swingTilt: 0,
         connected: false,
         primaryDown: false,
         bladeHot: false,
@@ -729,7 +865,8 @@ export class FruitSlicerGame implements GamePlugin {
 
     const safeHalfW = Math.max(2.6, this.halfW - 0.55);
     const safeHalfH = Math.max(1.8, this.halfH - 0.45);
-    const isLive = this.ctx.getPhase() === "playing" && !this.roundFinished;
+    const isPlaying = this.ctx.getPhase() === "playing" && !this.roundFinished;
+    const isLive = isPlaying && this.gameOverDelayS < 0;
 
     for (let slot = 0; slot < MAX_PLAYERS; slot++) {
       const frame = inputs[slot];
@@ -739,12 +876,14 @@ export class FruitSlicerGame implements GamePlugin {
       const nextX = frame.cursorX * safeHalfW;
       const nextY = frame.cursorY * safeHalfH;
       const wasConnected = blade.connected;
+      const isEliminated = (this.eliminated[slot] ?? 0) === 1;
 
       blade.prevWorldX = wasConnected ? blade.worldX : nextX;
       blade.prevWorldY = wasConnected ? blade.worldY : nextY;
       blade.worldX = nextX;
       blade.worldY = nextY;
       blade.rollRad = frame.rollRad;
+      blade.swingTilt = blade.swingTilt * Math.max(0, 1 - dt * 11);
       blade.connected = frame.connected;
       blade.primaryDown = frame.primaryDown;
       blade.whooshCooldown = Math.max(0, blade.whooshCooldown - dt);
@@ -754,7 +893,6 @@ export class FruitSlicerGame implements GamePlugin {
         blade.histX.fill(nextX);
         blade.histY.fill(nextY);
       } else if (frame.connected) {
-        // Shift ring trail history forward cleanly with zero allocations
         for (let i = 0; i < TRAIL_POINTS - 1; i++) {
           blade.histX[i] = blade.histX[i + 1]!;
           blade.histY[i] = blade.histY[i + 1]!;
@@ -765,9 +903,14 @@ export class FruitSlicerGame implements GamePlugin {
 
       const dist = Math.hypot(nextX - blade.prevWorldX, nextY - blade.prevWorldY);
       const speed = dist / Math.max(0.001, dt);
-      blade.bladeHot = frame.connected && (frame.primaryDown ? speed >= 0.75 : speed >= 3.2 || frame.angVelMag >= 2.2);
 
-      // Update combo chain window
+      // Safe Move lock: holding mobile pad or moving gently keeps the sword sheathed & non-slicing.
+      blade.bladeHot =
+        frame.connected &&
+        !isEliminated &&
+        !frame.primaryDown &&
+        (speed >= 7.2 || frame.angVelMag >= 3.4);
+
       if ((this.comboTimers[slot] ?? 0) > 0) {
         const nextT = Math.max(0, (this.comboTimers[slot] ?? 0) - dt);
         this.comboTimers[slot] = nextT;
@@ -777,7 +920,8 @@ export class FruitSlicerGame implements GamePlugin {
       }
 
       if (isLive && blade.bladeHot && dist > 0.04) {
-        if (speed >= 8.2 && blade.whooshCooldown <= 0) {
+        blade.swingTilt = clamp((nextX - blade.prevWorldX) * 1.4, -0.55, 0.55);
+        if (speed >= 9.5 && blade.whooshCooldown <= 0) {
           blade.whooshCooldown = 0.2;
           this.ctx.audio.play("swipe");
         }
@@ -785,49 +929,101 @@ export class FruitSlicerGame implements GamePlugin {
       }
     }
 
-    if (isLive) {
+    if (isPlaying) {
       if (!this.musicStarted) {
         this.musicStarted = true;
         this.ctx.audio.startMusic?.(this.tuning.musicBpm);
       }
 
-      this.roundElapsedMs += dt * 1000;
-      const remainingMs = Math.max(0, ROUND_DURATION_MS - this.roundElapsedMs);
-      this.ctx.hud.setRoundTimer(remainingMs);
-
-      if (!this.tutorialHidden && this.roundElapsedMs >= 7500) {
-        this.tutorialHidden = true;
-        this.ctx.hud.setTutorialVisible(false);
-      }
-
-      if (!this.feverAnnounced && remainingMs <= 5000 && remainingMs > 0) {
-        this.feverAnnounced = true;
-        this.ctx.audio.play("combo");
-        this.ctx.hud.announce("FINAL 5 SECONDS · 2× SLICE POINTS!");
-      }
-
-      if (remainingMs <= 0) {
-        this.finishGame();
+      if (this.gameOverDelayS >= 0) {
+        this.gameOverDelayS = Math.max(0, this.gameOverDelayS - dt);
+        if (this.gameOverDelayS === 0) {
+          this.finishGame();
+        }
       } else {
-        this.stepFruitDirector(dt);
+        this.roundElapsedMs += dt * 1000;
+        const remainingMs = Math.max(0, ROUND_DURATION_MS - this.roundElapsedMs);
+        this.ctx.hud.setRoundTimer(remainingMs);
+
+        if (!this.tutorialHidden && this.roundElapsedMs >= 8000) {
+          this.tutorialHidden = true;
+          this.ctx.hud.setTutorialVisible(false);
+        }
+
+        if (!this.feverAnnounced && remainingMs <= 5000 && remainingMs > 0) {
+          this.feverAnnounced = true;
+          this.ctx.audio.play("combo");
+          this.ctx.hud.announce("FINAL 5 SECONDS · 2× SLICE POINTS!");
+        }
+
+        if (remainingMs <= 0) {
+          this.finishGame();
+        } else {
+          this.stepFruitDirector(dt);
+        }
       }
     }
 
     this.updateEntities(dt);
     this.updateHalves(dt);
+    this.updateSplats(dt);
     this.updateFlashes(dt);
     this.particles.update(dt);
     this.shockwaves.update(dt);
   }
 
+  private enqueueToss(
+    delayS: number,
+    mode: "fruit" | "bomb" | "starfruit",
+    startXFrac: number,
+    inwardDir: number,
+    peakFrac: number,
+    isFrenzy: boolean,
+  ): void {
+    for (let i = 0; i < this.spawnQueue.length; i++) {
+      const q = this.spawnQueue[i]!;
+      if (!q.active) {
+        q.active = true;
+        q.delayS = Math.max(0, delayS);
+        q.mode = mode;
+        q.startXFrac = clamp(startXFrac, -0.9, 0.9);
+        q.inwardDir = inwardDir;
+        q.peakFrac = clamp(peakFrac, 0.18, 0.86);
+        q.isFrenzy = isFrenzy;
+        return;
+      }
+    }
+  }
+
+  private pickSpreadXFrac(): number {
+    let candidate = (this.rng() * 2 - 1) * 0.88;
+    if (Math.abs(candidate - this.lastSpawnXFrac) < 0.28) {
+      candidate = clamp(candidate + (candidate >= 0 ? -0.45 : 0.45), -0.88, 0.88);
+    }
+    this.lastSpawnXFrac = candidate;
+    return candidate;
+  }
+
   private stepFruitDirector(dt: number): void {
     const elapsedSec = this.roundElapsedMs / 1000;
+
+    // Dispatch staggered queue items at their exact jittered offsets
+    for (let i = 0; i < this.spawnQueue.length; i++) {
+      const q = this.spawnQueue[i]!;
+      if (!q.active) continue;
+      q.delayS -= dt;
+      if (q.delayS <= 0) {
+        q.active = false;
+        this.spawnToss(q.mode, elapsedSec, q.isFrenzy, q.startXFrac, q.inwardDir, q.peakFrac);
+      }
+    }
+
     const nextWave =
       elapsedSec < this.tuning.wave2Sec ? 1 : elapsedSec < this.tuning.wave3Sec ? 2 : 3;
     if (nextWave > this.currentWave) {
       this.currentWave = nextWave;
       this.ctx.hud.announce(
-        nextWave === 2 ? "Wave 2 · Double Toss & Bombs!" : "Wave 3 · Ninja Cascade!",
+        nextWave === 2 ? "Wave 2 · Faster Arcs & Bombs!" : "Wave 3 · Ninja Cascade!",
       );
     }
 
@@ -837,32 +1033,77 @@ export class FruitSlicerGame implements GamePlugin {
       this.frenzyTimer = Math.max(0, this.frenzyTimer - dt);
       this.frenzyBurstTimer -= dt;
       if (this.frenzyBurstTimer <= 0) {
-        this.frenzyBurstTimer = 0.34;
-        this.spawnToss("fruit", elapsedSec, true);
+        this.frenzyBurstTimer = 0.24 + this.rng() * 0.14;
+        const side = this.rng() < 0.5 ? -1 : 1;
+        this.spawnToss(
+          "fruit",
+          elapsedSec,
+          true,
+          side * (0.48 + this.rng() * 0.4),
+          -side,
+          0.35 + this.rng() * 0.48,
+        );
       }
       return;
     }
 
     this.waveTimer -= dt;
     if (this.waveTimer <= 0) {
-      this.waveTimer = this.tuning.waveIntervals[nextWave - 1] ?? 1.25;
-      const tossCount = this.tuning.waveCounts[nextWave - 1] ?? 4;
-      const count = Math.max(2, tossCount - (this.rng() < 0.35 ? 1 : 0));
+      const baseInterval = this.tuning.waveIntervals[nextWave - 1] ?? 1.25;
+      // Add organic timing variation so waves feel lively rather than robotic
+      this.waveTimer = baseInterval * (0.72 + this.rng() * 0.58);
+
+      const maxCount = this.tuning.waveCounts[nextWave - 1] ?? 4;
+      const count = Math.max(2, maxCount - Math.floor(this.rng() * 2));
+      const pattern = this.rng();
+
+      let accumDelay = 0;
+      const canBomb = elapsedSec >= this.tuning.bombUnlockSec;
+      let bombsInWave = 0;
 
       for (let i = 0; i < count; i++) {
-        if (this.starCooldown <= 0 && elapsedSec > 8) {
-          this.starCooldown = 14 + this.rng() * 5;
-          this.spawnToss("starfruit", elapsedSec, false);
-        } else {
-          const canBomb = elapsedSec >= this.tuning.bombUnlockSec;
-          const isBomb = canBomb && this.rng() < this.tuning.bombChance;
-          this.spawnToss(isBomb ? "bomb" : "fruit", elapsedSec, false);
+        let mode: "fruit" | "bomb" | "starfruit" = "fruit";
+        if (this.starCooldown <= 0 && elapsedSec > 8 && i === count - 1) {
+          this.starCooldown = 13 + this.rng() * 6;
+          mode = "starfruit";
+        } else if (canBomb && bombsInWave < 2 && this.rng() < this.tuning.bombChance) {
+          bombsInWave += 1;
+          mode = "bomb";
         }
+
+        let startXFrac = this.pickSpreadXFrac();
+        let inwardDir = 0;
+        let peakFrac = 0.22 + this.rng() * 0.62;
+
+        if (pattern < 0.34) {
+          // Scattered Stagger: sequential varied timings & spread positions
+          if (i > 0) accumDelay += 0.14 + this.rng() * 0.28;
+        } else if (pattern < 0.68) {
+          // Cross-Screen Scissor Pair + Stragglers
+          const side = i % 2 === 0 ? -1 : 1;
+          startXFrac = side * (0.58 + this.rng() * 0.3);
+          inwardDir = -side;
+          accumDelay += i === 0 ? 0 : i % 2 === 1 ? 0.12 + this.rng() * 0.12 : 0.28 + this.rng() * 0.25;
+        } else {
+          // Quick Burst Trio with delayed bomb/straggler feint
+          if (i >= 2) accumDelay += 0.24 + this.rng() * 0.32;
+          else if (i === 1) accumDelay += 0.05 + this.rng() * 0.1;
+          peakFrac = 0.3 + this.rng() * 0.54;
+        }
+
+        this.enqueueToss(accumDelay, mode, startXFrac, inwardDir, peakFrac, false);
       }
     }
   }
 
-  private spawnToss(mode: "fruit" | "bomb" | "starfruit", elapsedSec: number, isFrenzy: boolean): void {
+  private spawnToss(
+    mode: "fruit" | "bomb" | "starfruit",
+    elapsedSec: number,
+    isFrenzy: boolean,
+    startXFrac: number,
+    inwardDir: number,
+    peakFrac: number,
+  ): void {
     let slot: TossedEntity | null = null;
     for (let i = 0; i < this.entities.length; i++) {
       if (!this.entities[i]!.active) {
@@ -879,27 +1120,30 @@ export class FruitSlicerGame implements GamePlugin {
       kind = "starfruit";
     } else {
       const r = this.rng();
-      if (r < 0.3) kind = "watermelon";
-      else if (r < 0.58) kind = "orange";
-      else if (r < 0.82) kind = "kiwi";
+      if (r < 0.28) kind = "watermelon";
+      else if (r < 0.56) kind = "orange";
+      else if (r < 0.8) kind = "kiwi";
       else kind = "pineapple";
     }
 
-    const spanX = Math.max(2.0, this.halfW - 1.35);
-    const startX = isFrenzy
-      ? (this.rng() < 0.5 ? -1 : 1) * (spanX * (0.45 + this.rng() * 0.45))
-      : (this.rng() * 2 - 1) * spanX * 0.84;
-    const startY = -this.halfH - 1.1;
+    const spanX = Math.max(2.2, this.halfW - 1.25);
+    const startX = clamp(startXFrac, -0.9, 0.9) * spanX;
+    const startY = -this.halfH - 1.05;
 
-    // Aim horizontal velocity gently toward arena center so fruits cross in view
-    const biasInward = -Math.sign(startX) * (0.65 + this.rng() * 1.9);
-    const vx = Math.abs(startX) > 1.2 ? biasInward : (this.rng() * 2 - 1) * 1.8;
+    const absStart = Math.abs(startX);
+    let vx: number;
+    if (inwardDir !== 0) {
+      vx = inwardDir * (1.2 + this.rng() * 2.2);
+    } else if (absStart > 1.2) {
+      vx = -Math.sign(startX) * (0.7 + this.rng() * 2.2);
+    } else {
+      vx = (this.rng() * 2 - 1) * 2.1;
+    }
 
     const progress = clamp(elapsedSec / 60, 0, 1);
-    const heightMinFrac = 0.25 + progress * 0.1;
-    const heightMaxFrac = 0.78;
-    const peakY = this.halfH * (heightMinFrac + this.rng() * (heightMaxFrac - heightMinFrac));
-    const rise = Math.max(2.0, peakY - startY);
+    const boostedPeak = clamp(peakFrac + progress * 0.06, 0.2, 0.88);
+    const peakY = this.halfH * boostedPeak;
+    const rise = Math.max(2.2, peakY - startY);
     const vy = Math.sqrt(2 * this.tuning.gravity * rise);
 
     const style = FRUIT_STYLES[kind];
@@ -909,40 +1153,38 @@ export class FruitSlicerGame implements GamePlugin {
     slot.y = startY;
     slot.prevX = startX;
     slot.prevY = startY;
-    slot.z = kind === "bomb" ? 0.2 : (this.rng() - 0.5) * 0.6;
+    slot.z = kind === "bomb" ? 0.22 : (this.rng() - 0.5) * 0.55;
     slot.vx = vx;
     slot.vy = vy;
-    slot.rotX = this.rng() * Math.PI;
-    slot.rotY = this.rng() * Math.PI;
-    slot.rotZ = this.rng() * Math.PI;
-    slot.spinX = (this.rng() * 2 - 1) * 3.2;
-    slot.spinY = (this.rng() * 2 - 1) * 3.8;
-    slot.radius = style.radius * this.tuning.scaleMult * (kind === "bomb" ? 0.84 : 1.04);
-    slot.spawnGraceS = 0.12;
+    slot.rotX = this.rng() * Math.PI * 2;
+    slot.rotY = this.rng() * Math.PI * 2;
+    slot.rotZ = (this.rng() - 0.5) * 0.7;
+    slot.spinX = (this.rng() - 0.5) * 4.4;
+    slot.spinY = (this.rng() < 0.5 ? -1 : 1) * (1.4 + this.rng() * 3.1);
 
-    (Object.keys(slot.variants) as EntityKind[]).forEach((k) => {
-      const grp = slot!.variants[k];
-      grp.visible = k === kind;
-      if (k === kind) {
-        grp.scale.setScalar(this.tuning.scaleMult);
-      }
-    });
+    const sizeJitter = isFrenzy ? 1.0 : 0.92 + this.rng() * 0.18;
+    const scale = this.tuning.scaleMult * sizeJitter;
+    slot.radius = style.radius * scale;
+    slot.spawnGraceS = 0.22;
 
     slot.root.position.set(startX, startY, slot.z);
+    slot.root.scale.setScalar(scale);
     slot.root.visible = true;
+
+    for (const k of Object.keys(slot.variants) as EntityKind[]) {
+      slot.variants[k].visible = k === kind;
+    }
 
     if (kind === "bomb") {
       this.ctx.audio.play("bomb_fuse");
     } else if (kind === "starfruit") {
       this.ctx.audio.play("gold_spawn");
-      this.ctx.hud.announce("GOLDEN STARFRUIT! Slice it for Frenzy!");
-    } else {
-      this.ctx.audio.play("pop");
+      this.ctx.hud.announce("GOLDEN STARFRUIT! SLICE FOR FRENZY!");
     }
   }
 
   private updateEntities(dt: number): void {
-    const cullY = -this.halfH - 2.2;
+    const cullY = -this.halfH - 2.3;
     for (let i = 0; i < this.entities.length; i++) {
       const e = this.entities[i]!;
       if (!e.active) continue;
@@ -960,7 +1202,7 @@ export class FruitSlicerGame implements GamePlugin {
       e.rotY += e.spinY * dt;
 
       if (e.kind === "bomb") {
-        e.bombWarnMat.opacity = 0.45 + 0.4 * Math.sin(this.simTime * 11);
+        e.bombWarnMat.opacity = 0.48 + 0.42 * Math.sin(this.simTime * 12);
       }
 
       if (e.vy < 0 && e.y < cullY) {
@@ -993,6 +1235,31 @@ export class FruitSlicerGame implements GamePlugin {
     }
   }
 
+  private updateSplats(dt: number): void {
+    for (let i = 0; i < this.splats.length; i++) {
+      const s = this.splats[i]!;
+      if (!s.active) continue;
+
+      s.age += dt;
+      if (s.age >= s.maxAge) {
+        s.active = false;
+        s.mesh.visible = false;
+        continue;
+      }
+
+      // Quick elastic pop followed by gentle downward drip and fade
+      const popFrac = Math.min(1, s.age / 0.09);
+      const scalePop = s.baseScale * (0.55 + popFrac * 0.5);
+      const dripStretch = 1 + s.age * 0.05;
+      s.y -= 0.08 * dt;
+      s.mesh.position.set(s.x, s.y, s.z);
+      s.mesh.scale.set(scalePop, scalePop * dripStretch, 1);
+
+      const lifeFrac = s.age / s.maxAge;
+      s.mat.opacity = lifeFrac < 0.15 ? 0.88 : 0.88 * (1 - (lifeFrac - 0.15) / 0.85);
+    }
+  }
+
   private updateFlashes(dt: number): void {
     for (let i = 0; i < this.flashes.length; i++) {
       const f = this.flashes[i]!;
@@ -1010,18 +1277,22 @@ export class FruitSlicerGame implements GamePlugin {
   }
 
   onGesture(event: PlayerGestureEvent): void {
-    if (this.ctx.getPhase() !== "playing" || this.roundFinished) return;
-
-    const slot = event.slot;
-    const blade = this.blades[slot];
-    if (!blade || !blade.connected) return;
-
-    if (event.kind !== "swipe" && event.kind !== "flick" && event.kind !== "swing") {
+    if (this.ctx.getPhase() !== "playing" || this.roundFinished || this.gameOverDelayS >= 0) {
       return;
     }
 
+    const slot = event.slot;
+    const blade = this.blades[slot];
+    if (!blade || !blade.connected || (this.eliminated[slot] ?? 0) === 1) return;
+
+    // Taps, holds, and any action while holding Safe Move never trigger slashes/clicks
+    if (event.kind !== "swipe" && event.kind !== "flick" && event.kind !== "swing") {
+      return;
+    }
+    if (blade.primaryDown) return;
+
     const rawDx = event.dx;
-    const rawDy = -event.dy; // screen-space Y points down; world +Y points up
+    const rawDy = -event.dy; // screen Y points down; world +Y points up
     const mag = Math.hypot(rawDx, rawDy);
     const nx = mag > 0.05 ? rawDx / mag : 0.76;
     const ny = mag > 0.05 ? rawDy / mag : 0.65;
@@ -1033,11 +1304,34 @@ export class FruitSlicerGame implements GamePlugin {
     const bx = blade.worldX + nx * halfSpan;
     const by = blade.worldY + ny * halfSpan;
 
+    blade.swingTilt = clamp(nx * 0.7, -0.7, 0.7);
     const palette = PLAYER_SLOT_PALETTE[slot]!;
     this.spawnSlashFlash(ax, ay, bx, by, palette.hex);
     this.ctx.audio.play("swipe");
 
     this.sliceAlongSegment(slot, ax, ay, bx, by, false, 0.34);
+  }
+
+  private spawnJuiceSplat(x: number, y: number, juiceHex: number, baseScale: number): void {
+    const s = this.splats[this.splatCursor];
+    this.splatCursor = (this.splatCursor + 1) % this.splats.length;
+    if (!s) return;
+
+    s.active = true;
+    s.age = 0;
+    s.maxAge = 4.2 + this.rng() * 1.1;
+    s.x = x;
+    s.y = y;
+    // Slight deterministic z stagger prevents Z-fighting on overlapping juice decals
+    s.z = -2.55 + (this.splatCursor % 12) * 0.008;
+    s.baseScale = baseScale;
+
+    s.mat.color.setHex(juiceHex);
+    s.mat.opacity = 0.88;
+    s.mesh.position.set(s.x, s.y, s.z);
+    s.mesh.rotation.z = this.rng() * Math.PI * 2;
+    s.mesh.scale.setScalar(baseScale * 0.6);
+    s.mesh.visible = true;
   }
 
   private spawnSlashFlash(
@@ -1118,26 +1412,60 @@ export class FruitSlicerGame implements GamePlugin {
   private handleBombHit(slot: number, bx: number, by: number, bz: number): void {
     this.comboCounts[slot] = 0;
     this.comboTimers[slot] = 0;
-    this.scores[slot] = Math.max(0, (this.scores[slot] ?? 0) - 200);
-    this.localShake = Math.min(1, this.localShake + 0.85);
-    this.flashTimer = 0.22;
+    this.scores[slot] = Math.max(0, (this.scores[slot] ?? 0) - 150);
 
-    this.ctx.fx.addScreenShake(0.8);
-    this.ctx.fx.triggerHitStop(36);
+    const remainingLives = Math.max(0, (this.lives[slot] ?? MAX_LIVES) - 1);
+    this.lives[slot] = remainingLives;
+    if (remainingLives === 0) {
+      this.eliminated[slot] = 1;
+    }
+
+    this.localShake = Math.min(1, this.localShake + 0.92);
+    this.flashTimer = 0.25;
+
+    this.ctx.fx.addScreenShake(0.85);
+    this.ctx.fx.triggerHitStop(42);
     this.ctx.audio.play("bomb_boom");
     this.ctx.sendHaptic(slot, "error");
 
-    this.particles.spawnBurst(bx, by, bz + 0.2, 0xff3b30, 26, 8.6);
-    this.shockwaves.spawn(bx, by, bz + 0.2, 0xff3b30, 5.2, 0.42);
-    this.ctx.hud.announce(`${this.getPlayerName(slot)} SLICED A BOMB! -200`);
-    this.ctx.sendPadHud?.(slot, {
-      ammo: 6,
-      maxAmmo: 6,
-      reloading: false,
-      streak: 0,
-      prompt: "BOMB HIT! -200 pts",
-    });
+    this.particles.spawnBurst(bx, by, bz + 0.2, 0xff3b30, 30, 9.2);
+    this.shockwaves.spawn(bx, by, bz + 0.2, 0xff3b30, 5.5, 0.44);
+    this.spawnJuiceSplat(bx, by, 0xff3b30, 1.35);
+
+    const playerName = this.getPlayerName(slot);
+    if (remainingLives === 0) {
+      this.ctx.hud.announce(`${playerName} HIT 3 BOMBS — OUT!`);
+      this.ctx.sendPadHud?.(slot, {
+        ammo: 0,
+        maxAmmo: MAX_LIVES,
+        reloading: true,
+        streak: 0,
+        prompt: "OUT! 3 BOMBS HIT!",
+      });
+    } else {
+      this.ctx.hud.announce(`${playerName} BOMB HIT! ${remainingLives} LIVES LEFT`);
+      this.ctx.sendPadHud?.(slot, {
+        ammo: remainingLives,
+        maxAmmo: MAX_LIVES,
+        reloading: false,
+        streak: 0,
+        prompt: `BOMB HIT! ${remainingLives} LIVES LEFT`,
+      });
+    }
+
     this.syncScoreboardHud();
+
+    // Check if every connected player has lost all 3 lives
+    let anyAlive = false;
+    for (const p of this.ctx.players) {
+      if ((this.lives[p.slot] ?? 0) > 0) {
+        anyAlive = true;
+        break;
+      }
+    }
+    if (!anyAlive && this.gameOverDelayS < 0) {
+      this.gameOverDelayS = 0.65;
+    }
   }
 
   private handleFruitSliced(
@@ -1158,13 +1486,26 @@ export class FruitSlicerGame implements GamePlugin {
     this.comboLastY[slot] = entity.y;
 
     this.spawnSplitHalves(entity, cutAngle, style);
+    this.spawnJuiceSplat(
+      entity.x,
+      entity.y,
+      style.juiceHex,
+      (entity.radius / 0.72) * (0.95 + this.rng() * 0.35),
+    );
+    this.spawnJuiceSplat(
+      entity.x + Math.cos(cutAngle) * 0.65,
+      entity.y + Math.sin(cutAngle) * 0.65,
+      style.juiceHex,
+      0.55 + this.rng() * 0.25,
+    );
+
     this.particles.spawnBurst(
       entity.x,
       entity.y,
       entity.z + 0.15,
       style.juiceHex,
-      entity.kind === "starfruit" ? 26 : 18,
-      6.8,
+      entity.kind === "starfruit" ? 28 : 20,
+      7.2,
       entity.vx * 0.25,
       entity.vy * 0.2,
     );
@@ -1186,10 +1527,11 @@ export class FruitSlicerGame implements GamePlugin {
       this.ctx.audio.play("frenzy");
       this.ctx.sendHaptic("all", "combo");
       this.ctx.hud.announce(`${this.getPlayerName(slot)} STARFRUIT FRENZY! +${pts}`);
-      this.ctx.sendPadHud?.("all", {
-        ammo: 6,
-        maxAmmo: 6,
-        reloading: false,
+      const myLives = this.lives[slot] ?? MAX_LIVES;
+      this.ctx.sendPadHud?.(slot, {
+        ammo: myLives,
+        maxAmmo: MAX_LIVES,
+        reloading: myLives === 0,
         streak: count,
         prompt: "STARFRUIT FRENZY! SLICE FAST!",
       });
@@ -1209,7 +1551,7 @@ export class FruitSlicerGame implements GamePlugin {
   private flushComboBonus(slot: number): void {
     const count = this.comboCounts[slot] ?? 0;
     this.comboCounts[slot] = 0;
-    if (count < 2) return;
+    if (count < 2 || (this.eliminated[slot] ?? 0) === 1) return;
 
     const bonus = count === 2 ? 50 : count * 100;
     const scaledBonus = Math.round(bonus * this.tuning.scoreMult);
@@ -1223,10 +1565,11 @@ export class FruitSlicerGame implements GamePlugin {
       this.ctx.fx.addScreenShake(0.32);
       this.shockwaves.spawn(cx, cy, 0.35, 0xffd028, 4.4, 0.36);
       this.ctx.hud.announce(`${this.getPlayerName(slot)} ${count}-FRUIT COMBO +${scaledBonus}!`);
+      const myLives = this.lives[slot] ?? MAX_LIVES;
       this.ctx.sendPadHud?.(slot, {
-        ammo: 6,
-        maxAmmo: 6,
-        reloading: false,
+        ammo: myLives,
+        maxAmmo: MAX_LIVES,
+        reloading: myLives === 0,
         streak: count,
         prompt: `${count}-FRUIT COMBO +${scaledBonus}!`,
       });
@@ -1237,7 +1580,10 @@ export class FruitSlicerGame implements GamePlugin {
   private spawnSplitHalves(entity: TossedEntity, cutAngle: number, style: FruitStyle): void {
     const nx = -Math.sin(cutAngle);
     const ny = Math.cos(cutAngle);
-    const pushSpeed = 2.8;
+    const pushSpeed = 2.9;
+    const fruitKind: FruitOnlyKind = entity.kind === "bomb" ? "watermelon" : entity.kind;
+    const skinTex = this.texPack.skins[fruitKind];
+    const fleshTex = this.texPack.flesh[fruitKind];
 
     for (let side = -1; side <= 1; side += 2) {
       const h = this.halves[this.halfCursor];
@@ -1254,14 +1600,20 @@ export class FruitSlicerGame implements GamePlugin {
       h.vx = entity.vx * 0.75 + nx * side * pushSpeed;
       h.vy = Math.max(-1.0, entity.vy * 0.75) + ny * side * pushSpeed + 1.4;
       h.vz = side * 0.65;
-      h.rotX = 0.35 * side;
+      h.rotX = 0.45 * side;
       h.rotZ = cutAngle + (side === -1 ? Math.PI : 0);
-      h.spinX = side * 2.2;
+      h.spinX = side * 2.4;
       h.spinZ = side * 5.2;
       h.scale = (style.radius / 0.68) * this.tuning.scaleMult;
 
-      h.shellMat.color.setHex(style.rindHex);
-      h.fleshMat.color.setHex(style.fleshHex);
+      if (h.shellMat.map !== skinTex) {
+        h.shellMat.map = skinTex;
+        h.shellMat.needsUpdate = true;
+      }
+      if (h.fleshMat.map !== fleshTex) {
+        h.fleshMat.map = fleshTex;
+        h.fleshMat.needsUpdate = true;
+      }
       h.group.position.set(h.x, h.y, h.z);
       h.group.rotation.set(h.rotX, 0.25, h.rotZ);
       h.group.scale.setScalar(h.scale);
@@ -1291,6 +1643,8 @@ export class FruitSlicerGame implements GamePlugin {
       name: p.name,
       colorHex: p.colorHex,
       score: this.scores[p.slot] ?? 0,
+      lives: this.lives[p.slot] ?? MAX_LIVES,
+      maxLives: MAX_LIVES,
     }));
     this.ctx.hud.updateScoreboard(rows);
   }
@@ -1298,22 +1652,27 @@ export class FruitSlicerGame implements GamePlugin {
   render(alpha: number): void {
     for (let slot = 0; slot < this.blades.length; slot++) {
       const b = this.blades[slot]!;
-      b.group.visible = b.connected;
-      b.trailMesh.visible = b.connected;
-      if (!b.connected) continue;
+      const isEliminated = (this.eliminated[slot] ?? 0) === 1;
+      const visible = b.connected && !isEliminated;
+      b.sword.group.visible = visible;
+      b.trailMesh.visible = visible;
+      if (!visible) continue;
 
       const rx = b.prevWorldX + (b.worldX - b.prevWorldX) * alpha;
       const ry = b.prevWorldY + (b.worldY - b.prevWorldY) * alpha;
-      const zLayer = 0.6 + slot * 0.02;
+      const zLayer = 0.65 + slot * 0.02;
 
-      b.group.position.set(rx, ry, zLayer);
-      b.group.rotation.z = -b.rollRad;
-      b.ringMat.opacity = b.bladeHot ? 0.96 : 0.45;
-      b.coreMat.opacity = b.bladeHot ? 1.0 : 0.65;
-      b.ringMesh.scale.setScalar(b.bladeHot ? 1.18 : 0.85);
+      b.sword.group.position.set(rx, ry, zLayer);
+      b.sword.group.rotation.z = -b.rollRad * 0.45 + b.swingTilt;
+      b.sword.group.scale.setScalar(b.bladeHot ? 1.15 : b.primaryDown ? 0.88 : 1.0);
 
-      b.trailMat.opacity = b.bladeHot ? 0.88 : 0.24;
-      const maxWidth = b.bladeHot ? 0.22 : 0.08;
+      // Show steel/spine clearly when armed, dim & reveal Safe-Move ring when holding
+      b.sword.edgeMat.opacity = b.primaryDown ? 0.45 : 0.96;
+      b.sword.spineMat.opacity = b.primaryDown ? 0.35 : 0.95;
+      b.sword.sheathMat.opacity = b.primaryDown ? 0.55 : 0;
+
+      b.trailMat.opacity = b.bladeHot ? 0.88 : b.primaryDown ? 0 : 0.14;
+      const maxWidth = b.bladeHot ? 0.22 : 0.06;
       const pos = b.trailPositions;
 
       for (let i = 0; i < TRAIL_POINTS; i++) {
@@ -1374,7 +1733,7 @@ export class FruitSlicerGame implements GamePlugin {
 
     if (this.scene.background instanceof THREE.Color) {
       if (this.flashTimer > 0) {
-        this.scene.background.copy(this.activeBgColor).lerp(this.bombFlashColor, this.flashTimer / 0.22);
+        this.scene.background.copy(this.activeBgColor).lerp(this.bombFlashColor, this.flashTimer / 0.25);
       } else {
         this.scene.background.copy(this.activeBgColor);
       }

@@ -457,8 +457,16 @@ class PadApp {
     }).join("");
   }
 
+  private renderLifeHeartsHtml(hud: PadHudPayload): string {
+    return Array.from({ length: hud.maxAmmo }, (_, idx) => {
+      const alive = idx < hud.ammo;
+      return `<svg class="pad-life-pip" data-alive="${alive}" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.2 1.9 8.4a3.9 3.9 0 0 1 5.5-5.5L8 3.6l.6-.7a3.9 3.9 0 0 1 5.5 5.5L8 14.2Z"/></svg>`;
+    }).join("");
+  }
+
   private updatePadHudDom(): void {
     const ammoBar = this.root.querySelector<HTMLElement>("[data-pad-ammo]");
+    const livesBar = this.root.querySelector<HTMLElement>("[data-pad-lives]");
     const reloadBtn = this.root.querySelector<HTMLButtonElement>("[data-pad-reload]");
     const readout = this.root.querySelector<HTMLElement>("[data-gesture-readout]");
 
@@ -467,16 +475,25 @@ class PadApp {
       this.roomState.selectedGame === "target-shooting" &&
       this.padHud !== null;
 
-    const showPromptGame =
+    const activeFruitGame =
       this.roomState?.phase === "playing" &&
-      (this.roomState.selectedGame === "target-shooting" ||
-        this.roomState.selectedGame === "fruit-slicer") &&
+      this.roomState.selectedGame === "fruit-slicer" &&
       this.padHud !== null;
+
+    const showPromptGame = activeTargetGame || activeFruitGame;
 
     if (ammoBar) {
       ammoBar.hidden = !activeTargetGame;
       if (activeTargetGame && this.padHud) {
         ammoBar.innerHTML = this.renderAmmoPipsHtml(this.padHud);
+      }
+    }
+
+    if (livesBar) {
+      livesBar.hidden = !activeFruitGame;
+      if (activeFruitGame && this.padHud) {
+        livesBar.innerHTML = this.renderLifeHeartsHtml(this.padHud);
+        livesBar.setAttribute("aria-label", `Lives ${this.padHud.ammo} of ${this.padHud.maxAmmo}`);
       }
     }
 
@@ -747,17 +764,17 @@ class PadApp {
         : state.phase === "countdown"
           ? "Get Ready — Aim at Center!"
           : state.selectedGame === "fruit-slicer"
-            ? "Sweep Phone or Swipe Pad to Slice! Dodge Bombs!"
+            ? "Whip or Flick-Swipe to Slice · Hold Pad to Move"
             : (game?.controlsSummary.slice(0, 2).join(" · ") ?? "Active Controller");
 
     const showTargetHud =
       state.phase === "playing" && state.selectedGame === "target-shooting" && this.padHud !== null;
-    const showPromptGame =
-      state.phase === "playing" &&
-      (state.selectedGame === "target-shooting" || state.selectedGame === "fruit-slicer") &&
-      this.padHud !== null;
+    const showFruitHud =
+      state.phase === "playing" && state.selectedGame === "fruit-slicer" && this.padHud !== null;
+    const showPromptGame = showTargetHud || showFruitHud;
     const hud = this.padHud;
-    const hudPipsHtml = hud ? this.renderAmmoPipsHtml(hud) : "";
+    const hudPipsHtml = hud && showTargetHud ? this.renderAmmoPipsHtml(hud) : "";
+    const hudLivesHtml = hud && showFruitHud ? this.renderLifeHeartsHtml(hud) : "";
     const isEmpty = hud ? hud.ammo === 0 && !hud.reloading : false;
     const isLow = hud ? hud.ammo > 0 && hud.ammo <= 2 && !hud.reloading : false;
     const reloadLabel = !hud
@@ -782,6 +799,13 @@ class PadApp {
         <div class="pad-surface-label">
           <strong>${activeHeadline}</strong>
           <div class="pad-mag-bar" data-pad-ammo ${showTargetHud ? "" : "hidden"}>${hudPipsHtml}</div>
+          <div
+            class="pad-lives-bar"
+            data-pad-lives
+            role="img"
+            aria-label="Lives ${hud?.ammo ?? 3} of ${hud?.maxAmmo ?? 3}"
+            ${showFruitHud ? "" : "hidden"}
+          >${hudLivesHtml}</div>
           <span class="field-hint" data-gesture-readout>${escapeHtml(
             showPromptGame && hud?.prompt ? hud.prompt : this.lastGestureText,
           )}</span>

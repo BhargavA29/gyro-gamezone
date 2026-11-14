@@ -528,6 +528,43 @@
     font-weight: 700;
   }
 
+  .score-lives-strip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-inline-start: 2px;
+  }
+
+  .life-pip {
+    inline-size: 13px;
+    block-size: 13px;
+    fill: var(--status-bad, #ff3b30);
+    transition: opacity 120ms ease, fill 120ms ease;
+  }
+
+  .life-pip[data-alive="false"] {
+    fill: var(--text-muted);
+    opacity: 0.25;
+  }
+
+  .ko-tag {
+    padding: 0.05rem 0.35rem;
+    border-radius: var(--radius-sm);
+    background-color: var(--status-bad, #ff3b30);
+    color: #ffffff;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 700;
+  }
+
+  .score-pill[data-eliminated="true"] {
+    opacity: 0.62;
+  }
+
+  .host-sword-cursor {
+    cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath d='M3 3 L12 8 L22 18 L18 22 L8 12 Z' fill='%23eef4ff' stroke='%23161b26' stroke-width='1.5' stroke-linejoin='round'/%3E%3Cpath d='M16 23 L23 16 L25 18 L18 25 Z' fill='%23f5b82e' stroke='%23161b26' stroke-width='1'/%3E%3Cpath d='M21 21 L28 28' stroke='%231e293b' stroke-width='4' stroke-linecap='round'/%3E%3Ccircle cx='28' cy='28' r='2.2' fill='%23ff4d6d'/%3E%3C/svg%3E") 3 3, crosshair;
+  }
+
   .hud-diff-pill {
     display: inline-flex;
     align-items: center;

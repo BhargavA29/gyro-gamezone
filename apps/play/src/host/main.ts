@@ -99,6 +99,8 @@ class HostApp {
     name: string;
     colorHex: string;
     score: number;
+    lives?: number;
+    maxLives?: number;
   }> = [];
 
   private announceText = "";
@@ -1114,11 +1116,27 @@ class HostApp {
             ammoInfo.streak >= 2 ? `<span class="streak-tag">×${ammoInfo.streak}</span>` : "";
           ammoHtml = `<span class="score-ammo-strip" role="img" aria-label="Ammo ${ammoInfo.ammo} of ${ammoInfo.maxAmmo}">${dots}</span>${streakHtml}`;
         }
+
+        let livesHtml = "";
+        const hasLives = typeof p.lives === "number" && typeof p.maxLives === "number";
+        const isOut = hasLives && (p.lives ?? 0) <= 0;
+        if (hasLives) {
+          const maxL = p.maxLives ?? 3;
+          const curL = p.lives ?? 0;
+          const hearts = Array.from({ length: maxL }, (_, idx) => {
+            const alive = idx < curL;
+            return `<svg class="life-pip" data-alive="${alive}" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.2 1.9 8.4a3.9 3.9 0 0 1 5.5-5.5L8 3.6l.6-.7a3.9 3.9 0 0 1 5.5 5.5L8 14.2Z"/></svg>`;
+          }).join("");
+          const outTag = isOut ? `<span class="ko-tag">OUT</span>` : "";
+          livesHtml = `<span class="score-lives-strip" role="img" aria-label="Lives ${curL} of ${maxL}">${hearts}</span>${outTag}`;
+        }
+
         return `
-          <span class="score-pill" style="--seat-color: ${escapeHtml(p.colorHex)};">
+          <span class="score-pill" data-eliminated="${isOut}" style="--seat-color: ${escapeHtml(p.colorHex)};">
             <span class="score-swatch" style="background-color: ${escapeHtml(p.colorHex)};"></span>
             <span>${escapeHtml(p.name)}</span>
             <strong class="mono">${p.score}</strong>
+            ${livesHtml}
             ${ammoHtml}
           </span>
         `;

@@ -32,7 +32,16 @@ export interface GameHudApi {
   setRoundTimer(remainingMs: number | null): void;
   setTutorialVisible(visible: boolean, lines?: readonly string[]): void;
   announce(text: string): void;
-  updateScoreboard(players: ReadonlyArray<{ slot: number; name: string; colorHex: string; score: number }>): void;
+  updateScoreboard(
+    players: ReadonlyArray<{
+      slot: number;
+      name: string;
+      colorHex: string;
+      score: number;
+      lives?: number;
+      maxLives?: number;
+    }>,
+  ): void;
   setPlayerAmmoHud?(
     players: ReadonlyArray<{
       slot: number;
