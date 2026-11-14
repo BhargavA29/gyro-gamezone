@@ -180,6 +180,34 @@ export class AudioEngine implements GameAudioApi {
       case "miss":
         this.tone(ctx, now, 200, 120, 0.16, "sawtooth", 0.08);
         break;
+      case "swipe":
+        // Light crisp katana air-cut whoosh
+        this.noiseBurst(ctx, now, 0.085, "bandpass", 1900, 720, 0.055, 1.5);
+        break;
+      case "slice":
+        // Sharp blade swish + juicy fruit pop
+        this.noiseBurst(ctx, now, 0.075, "highpass", 2800, 1100, 0.09, 1.1);
+        this.tone(ctx, now, 540, 210, 0.075, "sine", 0.115);
+        this.tone(ctx, now + 0.015, 1180, 1680, 0.055, "triangle", 0.07);
+        break;
+      case "bomb_fuse":
+        // Subtle sizzling spark warning on bomb launch
+        this.noiseBurst(ctx, now, 0.12, "bandpass", 3600, 2200, 0.045, 2.2);
+        this.tone(ctx, now, 160, 115, 0.09, "triangle", 0.045);
+        break;
+      case "bomb_boom":
+        // Deep punchy arcade bomb blast
+        this.noiseBurst(ctx, now, 0.32, "lowpass", 1100, 75, 0.18, 0.9);
+        this.tone(ctx, now, 130, 34, 0.32, "sawtooth", 0.16);
+        this.tone(ctx, now + 0.03, 95, 28, 0.28, "square", 0.09);
+        break;
+      case "frenzy":
+        // Rising arcade frenzy fanfare arpeggio
+        this.tone(ctx, now, 523.25, 523.25, 0.07, "triangle", 0.09);
+        this.tone(ctx, now + 0.055, 659.25, 659.25, 0.07, "triangle", 0.095);
+        this.tone(ctx, now + 0.11, 783.99, 783.99, 0.08, "triangle", 0.1);
+        this.tone(ctx, now + 0.165, 1046.5, 1174.66, 0.16, "sine", 0.12);
+        break;
       case "bow_release":
         this.tone(ctx, now, 420, 160, 0.14, "triangle", 0.11);
         break;

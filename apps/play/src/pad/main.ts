@@ -467,6 +467,12 @@ class PadApp {
       this.roomState.selectedGame === "target-shooting" &&
       this.padHud !== null;
 
+    const showPromptGame =
+      this.roomState?.phase === "playing" &&
+      (this.roomState.selectedGame === "target-shooting" ||
+        this.roomState.selectedGame === "fruit-slicer") &&
+      this.padHud !== null;
+
     if (ammoBar) {
       ammoBar.hidden = !activeTargetGame;
       if (activeTargetGame && this.padHud) {
@@ -495,7 +501,7 @@ class PadApp {
       }
     }
 
-    if (readout && activeTargetGame && this.padHud?.prompt) {
+    if (readout && showPromptGame && this.padHud?.prompt) {
       readout.textContent = this.padHud.prompt;
     }
   }
@@ -740,10 +746,16 @@ class PadApp {
         ? `Connected to Room ${escapeHtml(state.roomCode)}`
         : state.phase === "countdown"
           ? "Get Ready — Aim at Center!"
-          : (game?.controlsSummary.slice(0, 2).join(" · ") ?? "Active Controller");
+          : state.selectedGame === "fruit-slicer"
+            ? "Sweep Phone or Swipe Pad to Slice! Dodge Bombs!"
+            : (game?.controlsSummary.slice(0, 2).join(" · ") ?? "Active Controller");
 
     const showTargetHud =
       state.phase === "playing" && state.selectedGame === "target-shooting" && this.padHud !== null;
+    const showPromptGame =
+      state.phase === "playing" &&
+      (state.selectedGame === "target-shooting" || state.selectedGame === "fruit-slicer") &&
+      this.padHud !== null;
     const hud = this.padHud;
     const hudPipsHtml = hud ? this.renderAmmoPipsHtml(hud) : "";
     const isEmpty = hud ? hud.ammo === 0 && !hud.reloading : false;
@@ -770,7 +782,9 @@ class PadApp {
         <div class="pad-surface-label">
           <strong>${activeHeadline}</strong>
           <div class="pad-mag-bar" data-pad-ammo ${showTargetHud ? "" : "hidden"}>${hudPipsHtml}</div>
-          <span class="field-hint" data-gesture-readout>${escapeHtml(hud?.prompt ?? this.lastGestureText)}</span>
+          <span class="field-hint" data-gesture-readout>${escapeHtml(
+            showPromptGame && hud?.prompt ? hud.prompt : this.lastGestureText,
+          )}</span>
         </div>
       </div>
 

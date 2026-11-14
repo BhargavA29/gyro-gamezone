@@ -21,6 +21,11 @@ export class GestureDetector {
   private lastX = 0;
   private lastY = 0;
   private downTs = 0;
+  private swipeAnchorX = 0;
+  private swipeAnchorY = 0;
+  private swipeAnchorTs = 0;
+  private lastLiveSwipeTs = 0;
+  private liveSwipeFired = false;
   private holding = false;
   private holdTimer: number | null = null;
 
@@ -87,8 +92,12 @@ export class GestureDetector {
       this.downY = e.clientY;
       this.lastX = e.clientX;
       this.lastY = e.clientY;
+      this.swipeAnchorX = e.clientX;
+      this.swipeAnchorY = e.clientY;
       this.downTs = performance.now();
+      this.swipeAnchorTs = this.downTs;
       this.holding = false;
+      this.liveSwipeFired = false;
 
       this.holdTimer = window.setTimeout(() => {
         if (this.activePointerId === e.pointerId) {
@@ -106,6 +115,7 @@ export class GestureDetector {
 
     const onPointerMove = (e: PointerEvent) => {
       if (e.pointerId !== this.activePointerId) return;
+      const now = performance.now();
       const rect = el.getBoundingClientRect();
       const dx = e.clientX - this.lastX;
       const dy = e.clientY - this.lastY;
@@ -113,6 +123,37 @@ export class GestureDetector {
       this.lastY = e.clientY;
       if (onDragDelta && rect.width > 0 && rect.height > 0) {
         onDragDelta(dx / rect.width, dy / rect.height);
+      }
+
+      if (this.holdTimer !== null && Math.hypot(e.clientX - this.downX, e.clientY - this.downY) >= 18) {
+        window.clearTimeout(this.holdTimer);
+        this.holdTimer = null;
+      }
+
+      if (!this.holding) {
+        const segDx = e.clientX - this.swipeAnchorX;
+        const segDy = e.clientY - this.swipeAnchorY;
+        const segDist = Math.hypot(segDx, segDy);
+        const segElapsed = Math.max(1, now - this.swipeAnchorTs);
+        const segSpeed = segDist / segElapsed;
+        if (segDist >= 40 && segSpeed >= 0.55 && now - this.lastLiveSwipeTs >= 95) {
+          this.lastLiveSwipeTs = now;
+          this.liveSwipeFired = true;
+          this.onGesture({
+            kind: "swipe",
+            dx: clamp(segDx / segDist, -1, 1),
+            dy: clamp(segDy / segDist, -1, 1),
+            power: clamp(segSpeed / 1.4, 0.35, 2.5),
+            clientTs: now,
+          });
+          this.swipeAnchorX = e.clientX;
+          this.swipeAnchorY = e.clientY;
+          this.swipeAnchorTs = now;
+        } else if (segElapsed > 160 && segSpeed < 0.25) {
+          this.swipeAnchorX = e.clientX;
+          this.swipeAnchorY = e.clientY;
+          this.swipeAnchorTs = now;
+        }
       }
     };
 
@@ -139,6 +180,24 @@ export class GestureDetector {
           power: clamp(elapsed / 1000, 0.2, 2.0),
           clientTs: now,
         });
+        return;
+      }
+
+      if (this.liveSwipeFired) {
+        const tailDx = e.clientX - this.swipeAnchorX;
+        const tailDy = e.clientY - this.swipeAnchorY;
+        const tailDist = Math.hypot(tailDx, tailDy);
+        const tailElapsed = Math.max(1, now - this.swipeAnchorTs);
+        const tailSpeed = tailDist / tailElapsed;
+        if (tailDist >= 28 && tailSpeed >= 0.55 && now - this.lastLiveSwipeTs >= 60) {
+          this.onGesture({
+            kind: "swipe",
+            dx: clamp(tailDx / tailDist, -1, 1),
+            dy: clamp(tailDy / tailDist, -1, 1),
+            power: clamp(tailSpeed / 1.4, 0.3, 2.5),
+            clientTs: now,
+          });
+        }
         return;
       }
 

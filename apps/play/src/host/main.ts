@@ -690,6 +690,9 @@ class HostApp {
             <button type="button" class="btn btn-accent" data-play-targets ${
               playerCount === 0 ? "disabled" : ""
             }>Play Target Shooting</button>
+            <button type="button" class="btn btn-accent" data-play-fruits ${
+              playerCount === 0 ? "disabled" : ""
+            }>Play Fruit Slicer</button>
             <button type="button" class="btn btn-primary" data-launch-calib ${
               playerCount === 0 ? "disabled" : ""
             }>Calibrate</button>
@@ -727,6 +730,12 @@ class HostApp {
     container.querySelector("[data-play-targets]")?.addEventListener("click", () => {
       this.audio.unlock();
       this.hostClient.sendControl({ type: "host:select_game", gameId: "target-shooting" });
+      this.hostClient.sendControl({ type: "host:start_round", seed: Date.now() & 0xffffff });
+    });
+
+    container.querySelector("[data-play-fruits]")?.addEventListener("click", () => {
+      this.audio.unlock();
+      this.hostClient.sendControl({ type: "host:select_game", gameId: "fruit-slicer" });
       this.hostClient.sendControl({ type: "host:start_round", seed: Date.now() & 0xffffff });
     });
 
@@ -785,7 +794,7 @@ class HostApp {
       <div class="seats-header">
         <div>
           <h1>Select Activity</h1>
-          <p class="field-hint">Aim Lab &amp; Target Shooting are playable now; Fruit Slicer, Archery &amp; Cricket unlock sequentially.</p>
+          <p class="field-hint">Aim Lab, Target Shooting &amp; Fruit Slicer are playable now; Archery &amp; Cricket unlock next.</p>
         </div>
         <button type="button" class="btn btn-ghost" data-back-lobby>Back to Lobby</button>
       </div>
@@ -881,7 +890,9 @@ class HostApp {
     const diffEl = this.root.querySelector<HTMLElement>("[data-hud-difficulty]");
     if (diffEl) {
       const showDiff =
-        this.roomState.phase !== "calibration" && this.roomState.selectedGame === "target-shooting";
+        this.roomState.phase !== "calibration" &&
+        (this.roomState.selectedGame === "target-shooting" ||
+          this.roomState.selectedGame === "fruit-slicer");
       diffEl.hidden = !showDiff;
       diffEl.textContent =
         this.roomState.difficulty === "casual"

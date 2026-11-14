@@ -62,6 +62,11 @@ export interface GameAudioApi {
       | "gold_hit"
       | "combo"
       | "miss"
+      | "slice"
+      | "swipe"
+      | "bomb_fuse"
+      | "bomb_boom"
+      | "frenzy"
       | "bow_release"
       | "bat_hit"
       | "end",
