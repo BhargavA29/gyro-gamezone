@@ -131,6 +131,7 @@ export class InputSimulator {
     this.primaryDown = true;
     this.downTs = performance.now();
     this.holding = false;
+    this.sendBinaryPacket(this.downTs, 0);
     this.holdTimer = window.setTimeout(() => {
       if (this.primaryDown) {
         this.holding = true;
@@ -142,6 +143,7 @@ export class InputSimulator {
   private onMouseUp = (e: MouseEvent) => {
     if (!this.primaryDown) return;
     this.primaryDown = false;
+    this.sendBinaryPacket(performance.now(), 0);
     if (this.holdTimer !== null) {
       window.clearTimeout(this.holdTimer);
       this.holdTimer = null;
@@ -185,6 +187,25 @@ export class InputSimulator {
     window.removeEventListener("keydown", this.onKeyDown);
   }
 
+  private sendBinaryPacket(now: number, angVelMag: number): void {
+    if (!this.room || this.slot < 0) return;
+    let flags = INPUT_FLAG_CALIBRATED | INPUT_FLAG_SIMULATOR;
+    if (this.primaryDown) flags |= INPUT_FLAG_PRIMARY;
+
+    packInputPacket(this.packetView, {
+      seq: (this.seq = (this.seq + 1) & 0xffff),
+      slot: this.slot,
+      flags,
+      clientTs: now,
+      aimYaw: this.aimYaw,
+      aimPitch: this.aimPitch,
+      roll: this.roll,
+      angVelMag,
+      gesturePower: 0,
+    });
+    this.room.sendBytes(MSG_INPUT_BINARY, this.packetBytes);
+  }
+
   private startLoop(): void {
     const tick = (now: number) => {
       if (!this.active) return;
@@ -197,21 +218,7 @@ export class InputSimulator {
         this.prevYaw = this.aimYaw;
         this.prevPitch = this.aimPitch;
 
-        let flags = INPUT_FLAG_CALIBRATED | INPUT_FLAG_SIMULATOR;
-        if (this.primaryDown) flags |= INPUT_FLAG_PRIMARY;
-
-        packInputPacket(this.packetView, {
-          seq: (this.seq = (this.seq + 1) & 0xffff),
-          slot: this.slot,
-          flags,
-          clientTs: now,
-          aimYaw: this.aimYaw,
-          aimPitch: this.aimPitch,
-          roll: this.roll,
-          angVelMag,
-          gesturePower: 0,
-        });
-        this.room.sendBytes(MSG_INPUT_BINARY, this.packetBytes);
+        this.sendBinaryPacket(now, angVelMag);
       }
     };
     this.rafId = window.requestAnimationFrame(tick);

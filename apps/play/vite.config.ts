@@ -67,6 +67,9 @@ export default defineConfig(({ command }) => {
 
   return {
     plugins: [isServe ? basicSsl() : undefined, mpaCleanRoutesPlugin()].filter(Boolean),
+    optimizeDeps: {
+      include: ["three", "qrcode", "@colyseus/sdk"],
+    },
     define: {
       __DEV_LAN_ORIGIN__: JSON.stringify(isServe ? `https://${lanIp}:5173` : ""),
     },

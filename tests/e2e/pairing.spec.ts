@@ -421,7 +421,8 @@ test.describe("Host + Pad Pairing, Calibration, Reconnect, & Aim Lab", () => {
       await expect(hostPage.locator("[data-hud-difficulty]")).toHaveText("Arcade");
       await expect(hostPage.locator("[data-hud-wind]")).toBeVisible();
       await expect(hostPage.locator("[data-hud-wind]")).toContainText("Wind");
-      await expect(hostPage.locator("[data-hud-timer]")).toBeVisible();
+      await expect(hostPage.locator("[data-hud-timer]")).toHaveText("End 1/6");
+      await expect(hostPage.locator("[data-hud-scoreboard] .attempt-box")).toHaveCount(6);
 
       // Pad shows Draw Tension meter and hides Target/Fruit HUD widgets
       await expect(padPage.locator("[data-pad-ammo]")).toBeHidden();
@@ -431,7 +432,7 @@ test.describe("Host + Pad Pairing, Calibration, Reconnect, & Aim Lab", () => {
       await expect(padPage.locator("[data-pad-draw-pct]")).toHaveText("READY");
       await expect(padPage.locator("[data-gesture-readout]")).toContainText("Hold=Draw");
 
-      // Hold phone touch surface to draw bowstring -> release to loose arrow
+      // Hold phone touch surface to draw bowstring -> release to loose arrow on End 1
       await hostPage.locator("[data-toggle-debug]").click();
       const surface = padPage.locator("[data-pad-surface]");
       const sBox = await surface.boundingBox();
@@ -439,9 +440,15 @@ test.describe("Host + Pad Pairing, Calibration, Reconnect, & Aim Lab", () => {
       await padPage.mouse.move(sBox.x + sBox.width * 0.5, sBox.y + sBox.height * 0.5);
       await padPage.mouse.down();
       await expect(padPage.locator("[data-pad-draw-pct]")).toContainText("%", { timeout: 2_500 });
-      await padPage.waitForTimeout(350);
+      await padPage.waitForTimeout(380);
       await padPage.mouse.up();
       await expect(hostPage.locator(".debug-drawer")).toContainText("Last gesture: P1 · hold_end");
+
+      // After arrow impacts single target and camera completes inspect glide, End 2/6 begins cleanly
+      await expect(hostPage.locator("[data-hud-timer]")).toHaveText("End 2/6", { timeout: 6_000 });
+      await expect(
+        hostPage.locator('[data-hud-scoreboard] .attempt-box:not([data-state="pending"])'),
+      ).toHaveCount(1);
 
       await hostPage.locator("[data-stage-finish]").click();
       await expect(hostPage.getByRole("heading", { name: /Archery Results/i })).toBeVisible();
@@ -472,9 +479,11 @@ test.describe("Host + Pad Pairing, Calibration, Reconnect, & Aim Lab", () => {
       await page.locator('[data-set-difficulty="casual"]').click();
 
       await page.locator("[data-play-archery]").click();
+      await expect(page.locator("[data-countdown-banner]")).toBeVisible();
       await expect(page.locator("[data-countdown-banner]")).toBeHidden({ timeout: 6_000 });
       await expect(page.locator("[data-hud-difficulty]")).toHaveText("Chill");
       await expect(page.locator("[data-hud-wind]")).toBeVisible();
+      await expect(page.locator("[data-hud-timer]")).toHaveText("End 1/6");
 
       const canvas = page.locator("canvas.host-stage-canvas");
       const box = await canvas.boundingBox();
@@ -484,13 +493,21 @@ test.describe("Host + Pad Pairing, Calibration, Reconnect, & Aim Lab", () => {
       await page.locator("[data-toggle-debug]").click();
       await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.48);
       await page.mouse.down();
-      await page.waitForTimeout(450);
+      await page.waitForTimeout(520);
       await page.mouse.up();
       await expect(page.locator(".debug-drawer")).toContainText("Last gesture: P1 · hold_end");
 
-      // Space bar quick-shot also looses an arrow cleanly
+      // Wait seamlessly into End 2/6 after camera inspect glide
+      await expect(page.locator("[data-hud-timer]")).toHaveText("End 2/6", { timeout: 6_000 });
+      await expect(
+        page.locator('[data-hud-scoreboard] .attempt-box:not([data-state="pending"])'),
+      ).toHaveCount(1);
+      await page.waitForTimeout(950);
+
+      // Space bar quick-shot looses on End 2 and advances to End 3/6
       await page.keyboard.press("Space");
       await expect(page.locator(".debug-drawer")).toContainText("Last gesture: P1 · swing");
+      await expect(page.locator("[data-hud-timer]")).toHaveText("End 3/6", { timeout: 6_000 });
 
       await page.locator("[data-stage-finish]").click();
       await expect(page.getByRole("heading", { name: /Archery Results/i })).toBeVisible();

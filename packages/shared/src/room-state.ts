@@ -76,14 +76,14 @@ export const GAME_CATALOG: readonly GameCatalogEntry[] = [
     id: "archery",
     slug: "archery",
     title: "Archery",
-    tagline: "Hold to draw string under haptic tension, read the wind, loose true.",
+    tagline: "Single target, 6 ends, rising crosswind & moving rail — tally the highest total.",
     roundDurationMs: 75_000,
     minPlayers: 1,
     maxPlayers: 4,
     controlsSummary: [
-      "Hold pad to draw bowstring",
-      "Aim with gyro against wind drift",
-      "Release finger to fire arrow",
+      "Hold pad to draw 3D recurve bow under haptic tension",
+      "Compensate gyro aim for crosswind across 6 ends",
+      "Release at full draw to group arrows & score End 6 (2×)",
     ],
   },
   {

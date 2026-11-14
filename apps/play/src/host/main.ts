@@ -101,6 +101,7 @@ class HostApp {
     score: number;
     lives?: number;
     maxLives?: number;
+    attempts?: ReadonlyArray<number | null>;
   }> = [];
 
   private announceText = "";
@@ -1048,6 +1049,20 @@ class HostApp {
             timerEl.setAttribute("data-urgent", String(secs <= 10));
           }
         },
+        setRoundLabel: (label, urgent = false) => {
+          const timerEl = this.root.querySelector<HTMLElement>("[data-hud-timer]");
+          if (!timerEl) return;
+          if (!label) {
+            timerEl.hidden = true;
+            return;
+          }
+          timerEl.hidden = false;
+          if (label !== lastTimerShown) {
+            lastTimerShown = label;
+            timerEl.textContent = label;
+            timerEl.setAttribute("data-urgent", String(urgent));
+          }
+        },
         setTutorialVisible: (visible, lines) => {
           const list = this.root.querySelector<HTMLElement>("[data-hud-tutorial]");
           if (!list) return;
@@ -1152,6 +1167,18 @@ class HostApp {
           livesHtml = `<span class="score-lives-strip" role="img" aria-label="Lives ${curL} of ${maxL}">${hearts}</span>${outTag}`;
         }
 
+        let attemptsHtml = "";
+        if (p.attempts && p.attempts.length > 0) {
+          const boxes = p.attempts
+            .map((pts, idx) => {
+              const state = pts === null ? "pending" : pts === 0 ? "miss" : pts >= 90 ? "gold" : "hit";
+              const text = pts === null ? "·" : pts === 0 ? "M" : String(pts);
+              return `<span class="attempt-box mono" data-state="${state}" title="End ${idx + 1}">${text}</span>`;
+            })
+            .join("");
+          attemptsHtml = `<span class="score-attempts-strip" aria-label="Attempt scores">${boxes}</span>`;
+        }
+
         return `
           <span class="score-pill" data-eliminated="${isOut}" style="--seat-color: ${escapeHtml(p.colorHex)};">
             <span class="score-swatch" style="background-color: ${escapeHtml(p.colorHex)};"></span>
@@ -1159,6 +1186,7 @@ class HostApp {
             <strong class="mono">${p.score}</strong>
             ${livesHtml}
             ${ammoHtml}
+            ${attemptsHtml}
           </span>
         `;
       })

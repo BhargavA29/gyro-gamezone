@@ -594,6 +594,43 @@
     color: var(--text-primary);
   }
 
+  .score-attempts-strip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-inline-start: 2px;
+  }
+
+  .attempt-box {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-inline-size: 20px;
+    block-size: 18px;
+    padding-inline: 3px;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+  }
+
+  .attempt-box[data-state="pending"] {
+    opacity: 0.4;
+  }
+
+  .attempt-box[data-state="miss"] {
+    color: var(--status-bad, #ff3b30);
+    border-color: color-mix(in srgb, var(--status-bad, #ff3b30) 45%, var(--border-subtle));
+  }
+
+  .attempt-box[data-state="gold"] {
+    background-color: color-mix(in srgb, var(--accent-gold, #f5b82e) 24%, var(--bg-surface));
+    border-color: var(--accent-gold, #f5b82e);
+    color: var(--accent-gold, #f5b82e);
+  }
+
   .calib-hud-bottom {
     position: absolute;
     inset-block-end: var(--sp-3);

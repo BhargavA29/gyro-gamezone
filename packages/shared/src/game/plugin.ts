@@ -30,6 +30,7 @@ export interface PlayerGestureEvent {
 
 export interface GameHudApi {
   setRoundTimer(remainingMs: number | null): void;
+  setRoundLabel?(label: string | null, urgent?: boolean): void;
   setTutorialVisible(visible: boolean, lines?: readonly string[]): void;
   announce(text: string): void;
   setWindHud?(label: string | null): void;
@@ -41,6 +42,7 @@ export interface GameHudApi {
       score: number;
       lives?: number;
       maxLives?: number;
+      attempts?: ReadonlyArray<number | null>;
     }>,
   ): void;
   setPlayerAmmoHud?(
