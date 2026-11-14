@@ -412,8 +412,8 @@ export class GyroControllerPipeline {
 
   finishStillCalibration(): StillCalibrationSummary {
     this.stillCollecting = false;
-    // In touch-fallback mode without gyro samples, succeed cleanly with defaults
-    if (this.backend === "touch-fallback" && this.stillQuats.length < 5) {
+    // If no hardware gyro samples are arriving (touch-fallback or headless desktop), succeed cleanly with defaults
+    if ((this.backend === "touch-fallback" || !this.hasQuatSample) && this.stillQuats.length < 5) {
       this.noiseFloorRad = 0;
       this.accelBaseline = 0;
       return {

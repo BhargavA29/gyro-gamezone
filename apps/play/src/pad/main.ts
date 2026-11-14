@@ -139,16 +139,21 @@ class PadApp {
     this.padClient = new PadClient({
       onState: (state, slot) => {
         const prevPhase = this.roomState?.phase;
+        const prevMe = this.getMe();
         this.roomState = state;
         this.mySlot = slot;
         const me = this.getMe();
         if (me) {
           this.root.style.setProperty("--player-color", me.colorHex);
         }
+        const identityChanged =
+          me !== undefined &&
+          (!prevMe || prevMe.slot !== me.slot || prevMe.name !== me.name || prevMe.colorHex !== me.colorHex);
+
         if (state.phase === "calibration" && prevPhase !== "calibration") {
           this.calibStep = "still";
           this.startStillCalibration();
-        } else if (prevPhase !== state.phase || !this.root.querySelector("[data-pad-surface]")) {
+        } else if (prevPhase !== state.phase || identityChanged || !this.root.querySelector("[data-pad-surface]")) {
           this.render();
         } else {
           this.updateLiveHeaderAndStatus();
