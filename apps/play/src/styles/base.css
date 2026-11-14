@@ -235,3 +235,9 @@
     }
   }
 }
+
+@layer utilities {
+  [hidden] {
+    display: none;
+  }
+}

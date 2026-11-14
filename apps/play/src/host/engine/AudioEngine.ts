@@ -5,6 +5,8 @@ const MUTE_KEY = "gyro-audio-muted";
 export class AudioEngine implements GameAudioApi {
   private ctx: AudioContext | null = null;
   private muted: boolean;
+  private musicTimer: number | null = null;
+  private musicStep = 0;
 
   constructor() {
     this.muted = this.readMutedPref();
@@ -24,6 +26,9 @@ export class AudioEngine implements GameAudioApi {
 
   setMuted(mute: boolean): void {
     this.muted = mute;
+    if (mute) {
+      this.stopMusic();
+    }
     try {
       localStorage.setItem(MUTE_KEY, mute ? "1" : "0");
     } catch {
@@ -45,8 +50,50 @@ export class AudioEngine implements GameAudioApi {
     }
   }
 
+  startMusic(bpm = 128): void {
+    if (this.musicTimer !== null) return;
+    const stepMs = Math.round((60 / bpm / 2) * 1000);
+    const bassNotes = [110, 110, 146.83, 130.81, 110, 164.81, 146.83, 130.81];
+    this.musicStep = 0;
+
+    this.musicTimer = window.setInterval(() => {
+      if (this.muted) return;
+      const ctx = this.ctx;
+      if (!ctx || ctx.state !== "running") return;
+
+      const now = ctx.currentTime;
+      const note = bassNotes[this.musicStep % bassNotes.length] ?? 110;
+      const accent = this.musicStep % 2 === 0;
+      this.tone(ctx, now, note, note * 0.98, 0.14, "triangle", accent ? 0.042 : 0.025);
+      if (this.musicStep % 4 === 2) {
+        // Subtle crisp high tick
+        this.tone(ctx, now, 1240, 880, 0.035, "sine", 0.018);
+      }
+      this.musicStep = (this.musicStep + 1) & 0xff;
+    }, stepMs);
+  }
+
+  stopMusic(): void {
+    if (this.musicTimer !== null) {
+      window.clearInterval(this.musicTimer);
+      this.musicTimer = null;
+    }
+  }
+
   play(
-    cue: "tick" | "go" | "pop" | "hit" | "combo" | "miss" | "bow_release" | "bat_hit" | "end",
+    cue:
+      | "tick"
+      | "go"
+      | "pop"
+      | "shot"
+      | "reload"
+      | "hazard"
+      | "hit"
+      | "combo"
+      | "miss"
+      | "bow_release"
+      | "bat_hit"
+      | "end",
   ): void {
     if (this.muted) return;
     if (!this.ctx) this.unlock();
@@ -63,6 +110,18 @@ export class AudioEngine implements GameAudioApi {
         break;
       case "pop":
         this.tone(ctx, now, 340, 620, 0.09, "sine", 0.12);
+        break;
+      case "shot":
+        this.tone(ctx, now, 420, 140, 0.075, "triangle", 0.11);
+        this.tone(ctx, now, 190, 95, 0.06, "square", 0.055);
+        break;
+      case "reload":
+        this.tone(ctx, now, 360, 480, 0.055, "square", 0.075);
+        this.tone(ctx, now + 0.07, 560, 780, 0.085, "triangle", 0.11);
+        break;
+      case "hazard":
+        this.tone(ctx, now, 165, 88, 0.24, "sawtooth", 0.14);
+        this.tone(ctx, now + 0.06, 130, 72, 0.22, "square", 0.08);
         break;
       case "hit":
         this.tone(ctx, now, 220, 110, 0.11, "square", 0.11);

@@ -649,6 +649,30 @@ class PadApp {
       `;
     }
 
+    if (state.phase === "results") {
+      const sorted = [...state.players].sort((a, b) => b.score - a.score);
+      const rank = me ? sorted.findIndex((p) => p.slot === me.slot) + 1 : 0;
+      return `
+        <section class="panel" style="display:flex;flex-direction:column;gap:14px;">
+          <span class="field-hint">${escapeHtml(game?.title ?? state.selectedGame)} · Results</span>
+          <h2>${rank > 0 ? `Finished #${rank}` : "Round Complete"}</h2>
+          <p class="mono" style="font-size:1.75rem;font-weight:700;">${me ? `${me.score.toLocaleString()} pts` : "0 pts"}</p>
+          <p class="field-hint">Look at the desktop screen for standings and result card. Host can trigger Rematch anytime.</p>
+          <div class="pad-footer">
+            <button type="button" class="btn btn-ghost" data-start-calib>Recalibrate</button>
+            <button type="button" class="btn btn-ghost" data-leave-room>Leave</button>
+          </div>
+        </section>
+      `;
+    }
+
+    const activeHeadline =
+      state.phase === "lobby"
+        ? `Connected to Room ${escapeHtml(state.roomCode)}`
+        : state.phase === "countdown"
+          ? "Get Ready — Aim at Center!"
+          : (game?.controlsSummary.slice(0, 2).join(" · ") ?? "Active Controller");
+
     return `
       ${sensorNotice}
       <div style="display:flex;justify-content:space-between;align-items:center;padding-inline:4px;">
@@ -659,7 +683,7 @@ class PadApp {
       <div class="pad-surface" data-pad-surface tabindex="0" aria-label="Interactive controller touch pad">
         <canvas class="aim-preview"></canvas>
         <div class="pad-surface-label">
-          <strong>${state.phase === "lobby" ? "Connected to Room " + escapeHtml(state.roomCode) : "Active Controller"}</strong>
+          <strong>${activeHeadline}</strong>
           <span class="field-hint" data-gesture-readout>${escapeHtml(this.lastGestureText)}</span>
         </div>
       </div>

@@ -8,12 +8,15 @@ import {
   type PlayerAimFrame,
   type PlayerGestureEvent,
 } from "@gyro/shared";
-import { getRenderedScheme } from "../../../common/theme.js";
+import {
+  ArcadeParticlePool,
+  ArcadeShockwavePool,
+  createToonGradientTexture,
+  observeThemeScheme,
+} from "../shared/ArcadeSceneUtils.js";
 
 const CAMERA_Z = 14;
 const FOV_DEG = 42;
-const PARTICLE_CAP = 180;
-const WAVE_CAP = 10;
 
 interface ReticleState {
   group: THREE.Group;
@@ -51,29 +54,6 @@ interface ArcadeTarget {
   respawnCooldown: number;
 }
 
-interface Shockwave {
-  mesh: THREE.Mesh;
-  mat: THREE.MeshBasicMaterial;
-  active: boolean;
-  age: number;
-  maxAge: number;
-  maxScale: number;
-}
-
-function createToonGradientTexture(): THREE.DataTexture {
-  const bands = new Uint8Array([
-    105, 105, 105, 255,
-    185, 185, 185, 255,
-    255, 255, 255, 255,
-  ]);
-  const tex = new THREE.DataTexture(bands, 3, 1, THREE.RGBAFormat);
-  tex.minFilter = THREE.NearestFilter;
-  tex.magFilter = THREE.NearestFilter;
-  tex.generateMipmaps = false;
-  tex.needsUpdate = true;
-  return tex;
-}
-
 export class AimDemoGame implements GamePlugin {
   readonly id = "aim-demo" as const;
 
@@ -96,32 +76,13 @@ export class AimDemoGame implements GamePlugin {
 
   private reticles: ReticleState[] = [];
   private targets: ArcadeTarget[] = [];
-  private shockwaves: Shockwave[] = [];
-  private waveCursor = 0;
-
-  private particleMesh!: THREE.InstancedMesh;
-  private particleCursor = 0;
-  private readonly pX = new Float32Array(PARTICLE_CAP);
-  private readonly pY = new Float32Array(PARTICLE_CAP);
-  private readonly pZ = new Float32Array(PARTICLE_CAP);
-  private readonly pVx = new Float32Array(PARTICLE_CAP);
-  private readonly pVy = new Float32Array(PARTICLE_CAP);
-  private readonly pVz = new Float32Array(PARTICLE_CAP);
-  private readonly pLife = new Float32Array(PARTICLE_CAP);
-  private readonly pMaxLife = new Float32Array(PARTICLE_CAP);
-
-  // Zero-allocation scratch helpers for hot loops
-  private readonly tmpMat = new THREE.Matrix4();
-  private readonly tmpPos = new THREE.Vector3();
-  private readonly tmpQuat = new THREE.Quaternion();
-  private readonly tmpEuler = new THREE.Euler();
-  private readonly tmpScale = new THREE.Vector3();
-  private readonly tmpColor = new THREE.Color();
+  private particles!: ArcadeParticlePool;
+  private shockwaves!: ArcadeShockwavePool;
 
   private readonly scores = new Int32Array(MAX_PLAYERS);
   private readonly streaks = new Int32Array(MAX_PLAYERS);
   private readonly disposables: Array<{ dispose(): void }> = [];
-  private metaObserver: MutationObserver | null = null;
+  private detachThemeObserver: (() => void) | null = null;
 
   init(ctx: GameHostContext): void {
     this.ctx = ctx;
@@ -159,11 +120,10 @@ export class AimDemoGame implements GamePlugin {
     this.buildCalibrationStage();
     this.buildTargets();
     this.buildReticles();
-    this.buildParticlePool();
-    this.buildShockwavePool();
+    this.particles = new ArcadeParticlePool(this.scene, 180, 0.11);
+    this.shockwaves = new ArcadeShockwavePool(this.scene, 10);
 
-    this.applyThemePalette(getRenderedScheme());
-    this.observeThemeChanges();
+    this.detachThemeObserver = observeThemeScheme((scheme) => this.applyThemePalette(scheme));
     this.onResize(width, height, Math.min(window.devicePixelRatio || 1, 2));
 
     this.ctx.hud.setRoundTimer(null);
@@ -344,65 +304,6 @@ export class AimDemoGame implements GamePlugin {
     }
   }
 
-  private buildParticlePool(): void {
-    const geo = new THREE.OctahedronGeometry(0.11, 0);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    this.disposables.push(geo, mat);
-
-    this.particleMesh = new THREE.InstancedMesh(geo, mat, PARTICLE_CAP);
-    this.particleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.particleMesh.frustumCulled = false;
-
-    this.tmpScale.setScalar(0);
-    this.tmpColor.setHex(0xffffff);
-    for (let i = 0; i < PARTICLE_CAP; i++) {
-      this.tmpMat.compose(this.tmpPos.set(0, 0, -50), this.tmpQuat.identity(), this.tmpScale);
-      this.particleMesh.setMatrixAt(i, this.tmpMat);
-      this.particleMesh.setColorAt(i, this.tmpColor);
-    }
-    this.particleMesh.instanceMatrix.needsUpdate = true;
-    if (this.particleMesh.instanceColor) {
-      this.particleMesh.instanceColor.needsUpdate = true;
-    }
-    this.scene.add(this.particleMesh);
-  }
-
-  private buildShockwavePool(): void {
-    const geo = new THREE.RingGeometry(0.24, 0.33, 32);
-    this.disposables.push(geo);
-
-    for (let i = 0; i < WAVE_CAP; i++) {
-      const mat = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0,
-        side: THREE.DoubleSide,
-      });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.visible = false;
-      this.scene.add(mesh);
-      this.disposables.push(mat);
-
-      this.shockwaves.push({
-        mesh,
-        mat,
-        active: false,
-        age: 0,
-        maxAge: 0.45,
-        maxScale: 4.0,
-      });
-    }
-  }
-
-  private observeThemeChanges(): void {
-    const meta = document.querySelector('meta[name="color-scheme"]');
-    if (!meta) return;
-    this.metaObserver = new MutationObserver(() => {
-      this.applyThemePalette(getRenderedScheme());
-    });
-    this.metaObserver.observe(meta, { attributes: true, attributeFilter: ["content"] });
-  }
-
   private applyThemePalette(scheme: "dark" | "light"): void {
     const bgHex = scheme === "dark" ? 0x0d0f14 : 0xe9eef5;
     this.scene.background = new THREE.Color(bgHex);
@@ -481,8 +382,8 @@ export class AimDemoGame implements GamePlugin {
       }
     }
 
-    this.updateParticles(dt);
-    this.updateShockwaves(dt);
+    this.particles.update(dt);
+    this.shockwaves.update(dt);
   }
 
   render(alpha: number): void {
@@ -540,8 +441,8 @@ export class AimDemoGame implements GamePlugin {
     if (event.kind === "flick" || event.kind === "swing") {
       this.ctx.audio.play("pop");
       this.ctx.sendHaptic(slot, "tap");
-      this.spawnShockwave(wx, wy, palette.hex, event.kind === "swing" ? 5.6 : 4.2, 0.46);
-      this.spawnBurst(wx, wy, palette.hex, 12, 5.2);
+      this.shockwaves.spawn(wx, wy, 0.2, palette.hex, event.kind === "swing" ? 5.6 : 4.2, 0.46);
+      this.particles.spawnBurst(wx, wy, 0.1, palette.hex, 12, 5.2);
       if (event.kind === "swing") {
         this.tryHitTargetsAt(slot, wx, wy, 1.35);
       }
@@ -550,7 +451,7 @@ export class AimDemoGame implements GamePlugin {
 
     if (event.kind === "swipe") {
       this.ctx.audio.play("pop");
-      this.spawnBurst(wx, wy, palette.hex, 10, 4.4, event.dx * 3.5, -event.dy * 3.5);
+      this.particles.spawnBurst(wx, wy, 0.1, palette.hex, 10, 4.4, event.dx * 3.5, -event.dy * 3.5);
       return;
     }
 
@@ -559,8 +460,8 @@ export class AimDemoGame implements GamePlugin {
       if (!hit && event.kind === "tap") {
         this.ctx.audio.play("pop");
         this.ctx.sendHaptic(slot, "tap");
-        this.spawnBurst(wx, wy, palette.hex, 6, 3.0);
-        this.spawnShockwave(wx, wy, palette.hex, 1.8, 0.25);
+        this.particles.spawnBurst(wx, wy, 0.1, palette.hex, 6, 3.0);
+        this.shockwaves.spawn(wx, wy, 0.2, palette.hex, 1.8, 0.25);
       }
     }
   }
@@ -568,7 +469,7 @@ export class AimDemoGame implements GamePlugin {
   triggerRecenterFeedback(slot: number): void {
     const palette = PLAYER_SLOT_PALETTE[slot];
     if (!palette) return;
-    this.spawnShockwave(0, 0, palette.hex, 3.2, 0.35);
+    this.shockwaves.spawn(0, 0, 0.2, palette.hex, 3.2, 0.35);
     this.ctx.audio.play("pop");
   }
 
@@ -591,8 +492,8 @@ export class AimDemoGame implements GamePlugin {
         this.localShake = Math.min(1.0, this.localShake + (bullseye ? 0.45 : 0.28));
         this.ctx.fx.addScreenShake(bullseye ? 0.35 : 0.2);
 
-        this.spawnBurst(t.posX, t.posY, palette.hex, bullseye ? 22 : 16, bullseye ? 7.2 : 5.6);
-        this.spawnShockwave(t.posX, t.posY, palette.hex, bullseye ? 4.4 : 3.1, 0.36);
+        this.particles.spawnBurst(t.posX, t.posY, 0.1, palette.hex, bullseye ? 22 : 16, bullseye ? 7.2 : 5.6);
+        this.shockwaves.spawn(t.posX, t.posY, 0.2, palette.hex, bullseye ? 4.4 : 3.1, 0.36);
 
         if (nextStreak > 1 && nextStreak % 3 === 0) {
           this.ctx.audio.play("combo");
@@ -626,114 +527,6 @@ export class AimDemoGame implements GamePlugin {
     this.ctx.hud.updateScoreboard(rows);
   }
 
-  private spawnBurst(
-    x: number,
-    y: number,
-    hex: string,
-    count: number,
-    speed: number,
-    biasVx = 0,
-    biasVy = 0,
-  ): void {
-    this.tmpColor.set(hex);
-    for (let n = 0; n < count; n++) {
-      const idx = this.particleCursor;
-      this.particleCursor = (this.particleCursor + 1) % PARTICLE_CAP;
-      const angle = (Math.PI * 2 * n) / count + (Math.random() - 0.5) * 0.4;
-      const mag = speed * (0.45 + Math.random() * 0.7);
-      this.pX[idx] = x;
-      this.pY[idx] = y;
-      this.pZ[idx] = 0.1;
-      this.pVx[idx] = Math.cos(angle) * mag + biasVx;
-      this.pVy[idx] = Math.sin(angle) * mag + biasVy;
-      this.pVz[idx] = (Math.random() - 0.5) * 2.4;
-      const ttl = 0.28 + Math.random() * 0.22;
-      this.pLife[idx] = ttl;
-      this.pMaxLife[idx] = ttl;
-      this.particleMesh.setColorAt(idx, this.tmpColor);
-    }
-    if (this.particleMesh.instanceColor) {
-      this.particleMesh.instanceColor.needsUpdate = true;
-    }
-  }
-
-  private spawnShockwave(
-    x: number,
-    y: number,
-    hex: string,
-    maxScale: number,
-    maxAge: number,
-  ): void {
-    const wave = this.shockwaves[this.waveCursor];
-    this.waveCursor = (this.waveCursor + 1) % WAVE_CAP;
-    if (!wave) return;
-
-    wave.active = true;
-    wave.age = 0;
-    wave.maxAge = maxAge;
-    wave.maxScale = maxScale;
-    wave.mat.color.set(hex);
-    wave.mat.opacity = 0.9;
-    wave.mesh.position.set(x, y, 0.2);
-    wave.mesh.scale.setScalar(0.35);
-    wave.mesh.visible = true;
-  }
-
-  private updateParticles(dt: number): void {
-    let anyChanged = false;
-    for (let i = 0; i < PARTICLE_CAP; i++) {
-      const rem = this.pLife[i] ?? 0;
-      if (rem <= 0) continue;
-      anyChanged = true;
-
-      const next = rem - dt;
-      this.pLife[i] = next;
-      if (next <= 0) {
-        this.tmpScale.setScalar(0);
-        this.tmpMat.compose(this.tmpPos.set(0, 0, -50), this.tmpQuat.identity(), this.tmpScale);
-        this.particleMesh.setMatrixAt(i, this.tmpMat);
-        continue;
-      }
-
-      const x = (this.pX[i] ?? 0) + (this.pVx[i] ?? 0) * dt;
-      const y = (this.pY[i] ?? 0) + (this.pVy[i] ?? 0) * dt;
-      const z = (this.pZ[i] ?? 0) + (this.pVz[i] ?? 0) * dt;
-      this.pX[i] = x;
-      this.pY[i] = y;
-      this.pZ[i] = z;
-      this.pVy[i] = (this.pVy[i] ?? 0) - 6.5 * dt;
-
-      const frac = next / Math.max(0.01, this.pMaxLife[i] ?? 0.3);
-      this.tmpPos.set(x, y, z);
-      this.tmpEuler.set(next * 9, next * 7, 0);
-      this.tmpQuat.setFromEuler(this.tmpEuler);
-      this.tmpScale.setScalar(0.65 * frac);
-      this.tmpMat.compose(this.tmpPos, this.tmpQuat, this.tmpScale);
-      this.particleMesh.setMatrixAt(i, this.tmpMat);
-    }
-
-    if (anyChanged) {
-      this.particleMesh.instanceMatrix.needsUpdate = true;
-    }
-  }
-
-  private updateShockwaves(dt: number): void {
-    for (let i = 0; i < this.shockwaves.length; i++) {
-      const wave = this.shockwaves[i]!;
-      if (!wave.active) continue;
-      wave.age += dt;
-      const t = wave.age / wave.maxAge;
-      if (t >= 1) {
-        wave.active = false;
-        wave.mesh.visible = false;
-        continue;
-      }
-      const easeOut = 1 - (1 - t) * (1 - t);
-      wave.mesh.scale.setScalar(0.35 + easeOut * wave.maxScale);
-      wave.mat.opacity = 0.85 * (1 - t);
-    }
-  }
-
   onResize(width: number, height: number, dpr: number): void {
     const safeW = Math.max(1, width);
     const safeH = Math.max(1, height);
@@ -755,8 +548,8 @@ export class AimDemoGame implements GamePlugin {
   }
 
   dispose(): void {
-    this.metaObserver?.disconnect();
-    this.metaObserver = null;
+    this.detachThemeObserver?.();
+    this.detachThemeObserver = null;
 
     if (this.gridHelper) {
       this.gridHelper.geometry.dispose();
@@ -768,6 +561,9 @@ export class AimDemoGame implements GamePlugin {
       }
       this.gridHelper = null;
     }
+
+    this.particles.dispose();
+    this.shockwaves.dispose();
 
     for (const d of this.disposables) {
       d.dispose();

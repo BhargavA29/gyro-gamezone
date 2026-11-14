@@ -137,4 +137,56 @@ test.describe("Host + Pad Pairing, Calibration, Reconnect, & Aim Lab", () => {
       await context.close();
     }
   });
+
+  test("launches Target Shooting through countdown, plays 60s gallery, fires/reloads, and renders Shareable Result Card", async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      ignoreHTTPSErrors: true,
+      viewport: { width: 1280, height: 800 },
+    });
+    const page = await context.newPage();
+
+    try {
+      await page.goto("/host");
+      await expect(page.locator("[data-status-label]")).toHaveText("Connected");
+
+      await page.locator("[data-toggle-sim]").click();
+      await expect(page.locator("[data-play-targets]")).toBeEnabled();
+      await page.locator("[data-play-targets]").click();
+
+      // Countdown banner shows first, then transitions to playing with round timer
+      const countdown = page.locator("[data-countdown-banner]");
+      await expect(countdown).toBeVisible();
+      await expect(countdown).toBeHidden({ timeout: 6_000 });
+
+      const timer = page.locator("[data-hud-timer]");
+      await expect(timer).toBeVisible();
+      await expect(timer).toContainText("s");
+
+      const canvas = page.locator("canvas.host-stage-canvas");
+      await expect(canvas).toBeVisible();
+      const box = await canvas.boundingBox();
+      if (!box) throw new Error("Missing stage canvas bounding box");
+
+      // Fire simulator shots and test wrist-flick reload shortcut (R)
+      await page.mouse.move(box.x + box.width * 0.42, box.y + box.height * 0.44);
+      await page.mouse.click(box.x + box.width * 0.42, box.y + box.height * 0.44);
+      await page.keyboard.press("r");
+
+      // Finish round early into Results Leaderboard + Shareable PNG Card
+      await page.locator("[data-stage-finish]").click();
+      await expect(
+        page.getByRole("heading", { name: /Target Shooting Results/i }),
+      ).toBeVisible();
+      await expect(page.locator(".results-list")).toContainText("Desktop Sim");
+      await expect(page.locator("[data-result-card-img]")).toHaveAttribute(
+        "src",
+        /^data:image\/png;base64,/,
+      );
+      await expect(page.locator("[data-download-card]")).toBeVisible();
+    } finally {
+      await context.close();
+    }
+  });
 });

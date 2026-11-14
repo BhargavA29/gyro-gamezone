@@ -408,6 +408,25 @@
     gap: var(--sp-2);
   }
 
+  .round-timer {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.65rem;
+    border-radius: var(--radius-md);
+    background-color: var(--bg-inset);
+    border: 1px solid var(--border-strong);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: 1.125rem;
+    color: var(--text-primary);
+  }
+
+  .round-timer[data-urgent="true"] {
+    border-color: var(--accent-signal);
+    color: var(--accent-signal);
+  }
+
   .score-pill {
     display: inline-flex;
     align-items: center;
@@ -500,6 +519,14 @@
     border-radius: var(--radius-md);
     background-color: var(--bg-surface);
     border: 1px solid var(--border-subtle);
+  }
+
+  .result-card-preview {
+    display: block;
+    max-inline-size: min(560px, 100%);
+    block-size: auto;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-strong);
   }
 
   .error-banner {

@@ -21,7 +21,9 @@ import { resolveJoinOrigin } from "../common/colyseus-client.js";
 import { bindThemeToggle, themeToggleHtml } from "../common/theme.js";
 import { AudioEngine } from "./engine/AudioEngine.js";
 import { HostEngine, type EngineTelemetry } from "./engine/HostEngine.js";
+import { isGameImplemented, loadGamePlugin } from "./games/registry.js";
 import { HostClient } from "./net/HostClient.js";
+import { renderShareableResultCard } from "./resultsCard.js";
 import { InputSimulator } from "./simulator/InputSimulator.js";
 
 const CUSTOM_ORIGIN_KEY = "gyro-host-custom-origin";
@@ -434,8 +436,18 @@ class HostApp {
     this.currentScreen = nextScreen;
 
     if (nextScreen === "stage") {
-      const enteringPlayFromCalib = prevPhase === "calibration" && this.roomState.phase === "playing";
-      if (screenChanged || enteringPlayFromCalib || !this.stageMountEl) {
+      const desiredGame: GameId =
+        this.roomState.phase === "calibration" ? "aim-demo" : this.roomState.selectedGame;
+      const enteringPlayFromCalib =
+        prevPhase === "calibration" && this.roomState.phase === "playing";
+      const pluginChanged =
+        this.activeGameLoadedId !== null && this.activeGameLoadedId !== desiredGame;
+
+      if (prevPhase === "countdown" && this.roomState.phase === "playing") {
+        this.audio.play("go");
+      }
+
+      if (screenChanged || enteringPlayFromCalib || pluginChanged || !this.stageMountEl) {
         this.teardownStage();
         this.renderMainScreen(true);
       } else {
@@ -616,12 +628,15 @@ class HostApp {
           <div class="seats-grid">${playerCardsHtml}</div>
 
           <div class="lobby-cta-bar">
-            <button type="button" class="btn btn-accent" data-launch-calib ${
+            <button type="button" class="btn btn-accent" data-play-targets ${
               playerCount === 0 ? "disabled" : ""
-            }>Run Calibration + Aim Lab</button>
-            <button type="button" class="btn btn-primary" data-quick-aim ${
+            }>Play Target Shooting</button>
+            <button type="button" class="btn btn-primary" data-launch-calib ${
               playerCount === 0 ? "disabled" : ""
-            }>Launch Aim Lab Now</button>
+            }>Calibrate</button>
+            <button type="button" class="btn btn-ghost" data-quick-aim ${
+              playerCount === 0 ? "disabled" : ""
+            }>Aim Lab</button>
             <button type="button" class="btn btn-ghost" data-open-catalog>Game Roster</button>
           </div>
         </section>
@@ -648,6 +663,12 @@ class HostApp {
       });
     });
 
+    container.querySelector("[data-play-targets]")?.addEventListener("click", () => {
+      this.audio.unlock();
+      this.hostClient.sendControl({ type: "host:select_game", gameId: "target-shooting" });
+      this.hostClient.sendControl({ type: "host:start_round", seed: Date.now() & 0xffffff });
+    });
+
     container.querySelector("[data-launch-calib]")?.addEventListener("click", () => {
       this.audio.unlock();
       this.hostClient.sendControl({ type: "host:select_game", gameId: "aim-demo" });
@@ -668,7 +689,7 @@ class HostApp {
 
   private renderGameSelect(container: HTMLElement, state: PartyRoomStateSnapshot): void {
     const cardsHtml = GAME_CATALOG.map((g, idx) => {
-      const unlocked = g.id === "aim-demo";
+      const unlocked = isGameImplemented(g.id);
       const controlsHtml = g.controlsSummary
         .map((line) => `<li>${escapeHtml(line)}</li>`)
         .join("");
@@ -692,7 +713,7 @@ class HostApp {
                   <button type="button" class="btn btn-accent" data-pick-calib="${g.id}">Calibrate & Start</button>
                   <button type="button" class="btn btn-primary" data-pick-start="${g.id}">Instant Launch</button>
                 `
-                : `<button type="button" class="btn btn-ghost" disabled>Ships after sensor sign-off</button>`
+                : `<button type="button" class="btn btn-ghost" disabled>Ships next milestone</button>`
             }
           </div>
         </article>
@@ -703,7 +724,7 @@ class HostApp {
       <div class="seats-header">
         <div>
           <h1>Select Activity</h1>
-          <p class="field-hint">Games 1–4 unlock once you verify gyro aim, calibration, and pairing on your phones.</p>
+          <p class="field-hint">Aim Lab &amp; Target Shooting are playable now; Fruit Slicer, Archery &amp; Cricket unlock sequentially.</p>
         </div>
         <button type="button" class="btn btn-ghost" data-back-lobby>Back to Lobby</button>
       </div>
@@ -744,7 +765,10 @@ class HostApp {
           </div>
 
           <div class="stage-hud-card" style="display: flex; flex-direction: column; gap: 0.5rem;">
-            <div class="scoreboard-strip" data-hud-scoreboard></div>
+            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.65rem; flex-wrap: wrap;">
+              <span class="round-timer mono" data-hud-timer hidden>60.0s</span>
+              <div class="scoreboard-strip" data-hud-scoreboard></div>
+            </div>
             <div class="host-actions" data-stage-actions></div>
           </div>
         </div>
@@ -793,7 +817,9 @@ class HostApp {
     if (actionsEl) {
       if (this.roomState.phase === "calibration") {
         actionsEl.innerHTML = `
-          <button type="button" class="btn btn-accent" data-stage-start>Start Aim Lab</button>
+          <button type="button" class="btn btn-accent" data-stage-start>Start ${escapeHtml(
+            gameEntry?.title ?? "Round",
+          )}</button>
           <button type="button" class="btn btn-ghost" data-stage-lobby>Lobby</button>
         `;
         actionsEl.querySelector("[data-stage-start]")?.addEventListener("click", () => {
@@ -879,24 +905,46 @@ class HostApp {
 
   private async ensurePluginMounted(): Promise<void> {
     if (!this.roomState || !this.stageMountEl) return;
-    const targetGame: GameId = "aim-demo";
+    const targetGame: GameId =
+      this.roomState.phase === "calibration" ? "aim-demo" : this.roomState.selectedGame;
     if (this.activePlugin && this.activeGameLoadedId === targetGame) {
       return;
     }
 
-    const mod = await import("./games/aim-demo/AimDemoGame.js");
-    if (this.currentScreen !== "stage" || !this.stageMountEl) return;
+    const plugin = await loadGamePlugin(targetGame);
+    if (this.currentScreen !== "stage" || !this.stageMountEl) {
+      plugin.dispose();
+      return;
+    }
 
     const getPlayers = () => this.roomState?.players ?? [];
-    const plugin: GamePlugin = new mod.AimDemoGame();
+    const getPhase = () => this.roomState?.phase ?? "lobby";
+    let lastTimerShown = "";
+
     const ctx: GameHostContext = {
       container: this.stageMountEl,
       get players() {
         return getPlayers();
       },
       seed: Date.now() & 0xffffff,
+      getPhase,
       hud: {
-        setRoundTimer: () => {},
+        setRoundTimer: (remainingMs) => {
+          const timerEl = this.root.querySelector<HTMLElement>("[data-hud-timer]");
+          if (!timerEl) return;
+          if (remainingMs === null) {
+            timerEl.hidden = true;
+            return;
+          }
+          timerEl.hidden = false;
+          const secs = Math.max(0, remainingMs / 1000);
+          const formatted = secs < 10 ? `${secs.toFixed(1)}s` : `${Math.ceil(secs)}s`;
+          if (formatted !== lastTimerShown) {
+            lastTimerShown = formatted;
+            timerEl.textContent = formatted;
+            timerEl.setAttribute("data-urgent", String(secs <= 10));
+          }
+        },
         setTutorialVisible: (visible, lines) => {
           const list = this.root.querySelector<HTMLElement>("[data-hud-tutorial]");
           if (!list) return;
@@ -969,6 +1017,8 @@ class HostApp {
   }
 
   private renderResults(container: HTMLElement, state: PartyRoomStateSnapshot): void {
+    const gameEntry = GAME_CATALOG.find((g) => g.id === state.selectedGame);
+    const title = gameEntry?.title ?? "Round";
     const sorted = [...state.players].sort((a, b) => b.score - a.score);
     const rowsHtml = sorted
       .map(
@@ -978,11 +1028,13 @@ class HostApp {
               <span class="mono">#${rank + 1}</span>
               ${avatarSvg(p.avatarId, p.colorHex, 30)}
               <div>
-                <div class="seat-name">${escapeHtml(p.name)}</div>
+                <div class="seat-name">${escapeHtml(p.name)} ${
+                  rank === 0 && p.score > 0 ? '<span class="badge badge-good">Winner</span>' : ""
+                }</div>
                 <div class="seat-sub">Room wins: ${p.wins}</div>
               </div>
             </div>
-            <strong class="mono" style="font-size: 1.35rem;">${p.score} pts</strong>
+            <strong class="mono" style="font-size: 1.35rem;">${p.score.toLocaleString()} pts</strong>
           </div>
         `,
       )
@@ -992,27 +1044,68 @@ class HostApp {
       <section class="panel" style="display: flex; flex-direction: column; gap: 1rem;">
         <div class="seats-header">
           <div>
-            <h1>Calibration Lab Results</h1>
+            <h1>${escapeHtml(title)} Results</h1>
             <p class="field-hint">Local room standings for room ${escapeHtml(state.roomCode)}.</p>
           </div>
           <div class="host-actions">
             <button type="button" class="btn btn-accent" data-rematch>Rematch</button>
-            <button type="button" class="btn btn-primary" data-recalib>Recalibrate</button>
+            <button type="button" class="btn btn-primary" data-results-catalog>Change Game</button>
+            <button type="button" class="btn btn-ghost" data-recalib>Recalibrate</button>
             <button type="button" class="btn btn-ghost" data-results-lobby>Lobby</button>
           </div>
         </div>
         <div class="results-list">${rowsHtml || '<p class="field-hint">No active players scored.</p>'}</div>
+        <div style="display: flex; flex-direction: column; gap: 0.75rem; padding-top: 0.5rem;">
+          <div class="host-actions">
+            <button type="button" class="btn btn-ghost" data-download-card>Download Result Card (PNG)</button>
+            <button type="button" class="btn btn-ghost" data-share-card hidden>Share Result</button>
+          </div>
+          <img class="result-card-preview" data-result-card-img alt="Shareable match result card" hidden />
+        </div>
       </section>
     `;
 
     container.querySelector("[data-rematch]")?.addEventListener("click", () => {
       this.hostClient.sendControl({ type: "host:start_round", seed: Date.now() & 0xffffff });
     });
+    container.querySelector("[data-results-catalog]")?.addEventListener("click", () => {
+      this.hostClient.sendControl({ type: "host:set_phase", phase: "game_select" });
+    });
     container.querySelector("[data-recalib]")?.addEventListener("click", () => {
       this.hostClient.sendControl({ type: "host:set_phase", phase: "calibration" });
     });
     container.querySelector("[data-results-lobby]")?.addEventListener("click", () => {
       this.hostClient.sendControl({ type: "host:set_phase", phase: "lobby" });
+    });
+
+    void renderShareableResultCard(title, state.roomCode, sorted).then(({ dataUrl, blob }) => {
+      if (!dataUrl) return;
+      const preview = container.querySelector<HTMLImageElement>("[data-result-card-img]");
+      if (preview) {
+        preview.src = dataUrl;
+        preview.hidden = false;
+      }
+      container.querySelector("[data-download-card]")?.addEventListener("click", () => {
+        const a = document.createElement("a");
+        a.href = dataUrl;
+        a.download = `gyro-${state.selectedGame}-${state.roomCode.toLowerCase()}.png`;
+        a.click();
+      });
+
+      const shareBtn = container.querySelector<HTMLButtonElement>("[data-share-card]");
+      if (shareBtn && blob && typeof navigator.canShare === "function") {
+        const file = new File([blob], `gyro-${state.selectedGame}.png`, { type: "image/png" });
+        if (navigator.canShare({ files: [file] })) {
+          shareBtn.hidden = false;
+          shareBtn.addEventListener("click", () => {
+            void navigator.share({
+              title: `${title} — Gyro-Gamezone`,
+              text: `Room ${state.roomCode} standings`,
+              files: [file],
+            }).catch(() => {});
+          });
+        }
+      }
     });
   }
 

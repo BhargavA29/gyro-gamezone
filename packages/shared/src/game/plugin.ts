@@ -1,5 +1,5 @@
 import type { GestureKind, HapticPattern } from "../protocol.js";
-import type { GameId, PlayerSlotState } from "../room-state.js";
+import type { GameId, PlayerSlotState, RoomPhase } from "../room-state.js";
 
 export interface PlayerAimFrame {
   slot: 0 | 1 | 2 | 3;
@@ -36,7 +36,23 @@ export interface GameHudApi {
 }
 
 export interface GameAudioApi {
-  play(cue: "tick" | "go" | "pop" | "hit" | "combo" | "miss" | "bow_release" | "bat_hit" | "end"): void;
+  play(
+    cue:
+      | "tick"
+      | "go"
+      | "pop"
+      | "shot"
+      | "reload"
+      | "hazard"
+      | "hit"
+      | "combo"
+      | "miss"
+      | "bow_release"
+      | "bat_hit"
+      | "end",
+  ): void;
+  startMusic?(bpm?: number): void;
+  stopMusic?(): void;
 }
 
 export interface GameFxApi {
@@ -48,6 +64,7 @@ export interface GameHostContext {
   container: HTMLElement;
   players: readonly PlayerSlotState[];
   seed: number;
+  getPhase(): RoomPhase;
   hud: GameHudApi;
   audio: GameAudioApi;
   fx: GameFxApi;
