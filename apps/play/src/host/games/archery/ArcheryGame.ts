@@ -1121,8 +1121,8 @@ export class ArcheryGame implements GamePlugin {
       this.targetY =
         0.25 +
         Math.sin(this.railPhaseTime * spec.oscFreqY * this.tuning.moveFreqMult) *
-          spec.oscAmpY *
-          this.tuning.moveAmpMult;
+        spec.oscAmpY *
+        this.tuning.moveAmpMult;
     } else if (this.attemptPhase === "intro_glide") {
       this.targetY += (0.25 - this.targetY) * Math.min(1, dt * 6);
     }
