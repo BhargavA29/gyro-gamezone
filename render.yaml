@@ -3,8 +3,8 @@ services:
     name: gyro-gamezone-server
     runtime: node
     plan: free
-    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @gyro/shared build && pnpm --filter @gyro/server build
-    startCommand: pnpm --filter @gyro/server start
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @gyro/shared build && pnpm --filter @gyro/server build
+    startCommand: node apps/server/dist/index.js
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION

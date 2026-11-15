@@ -38,8 +38,8 @@ Because **Vercel Functions do not run stateful WebSocket game rooms**, split dep
 1. **Deploy the relay server on Render (free, no credit card required):**
    - Push this repo to GitHub.
    - In Render, click **New + -> Blueprint** and select this repo (it reads `render.yaml` automatically), **or** create a **Web Service (Free)** with:
-     - **Build Command:** `pnpm install --frozen-lockfile && pnpm --filter @gyro/shared build && pnpm --filter @gyro/server build`
-     - **Start Command:** `pnpm --filter @gyro/server start`
+     - **Build Command:** `corepack enable && pnpm install --frozen-lockfile && pnpm --filter @gyro/shared build && pnpm --filter @gyro/server build`
+     - **Start Command:** `node apps/server/dist/index.js`
      - **Health Check Path:** `/health`
    - Copy your Render URL, e.g. `https://gyro-gamezone-server.onrender.com`.
 
@@ -55,8 +55,8 @@ Because **Vercel Functions do not run stateful WebSocket game rooms**, split dep
 ### Option 2: Single Free Service on Render (Zero CORS Config)
 
 Run everything from one Node service on Render:
-- **Build Command:** `pnpm install --frozen-lockfile && pnpm --filter @gyro/shared build && pnpm --filter @gyro/play build && pnpm --filter @gyro/server build`
-- **Start Command:** `pnpm --filter @gyro/server start`
+- **Build Command:** `corepack enable && pnpm install --frozen-lockfile && pnpm --filter @gyro/shared build && pnpm --filter @gyro/play build && pnpm --filter @gyro/server build`
+- **Start Command:** `node apps/server/dist/index.js`
 - **Environment Variable:** `SERVE_PLAY_DIST=1`
 - Leave `VITE_SERVER_URL` empty — `@gyro/play` connects automatically to the same origin.
 
